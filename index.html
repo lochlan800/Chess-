@@ -802,7 +802,7 @@ let st, history, repMap, gameOver, selected, legalForSelected, humanColor, think
 /* ---- Move sounds (synthesized with Web Audio, no asset files) ---- */
 let soundOn = true;
 let audioCtx = null;
-function playMoveSound(isCapture, isCheck) {
+function playMoveSound(isCapture, isCheck, isComputer) {
   if (!soundOn) return;
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -810,12 +810,15 @@ function playMoveSound(isCapture, isCheck) {
     const ctx = audioCtx, now = ctx.currentTime;
     const o = ctx.createOscillator(), g = ctx.createGain();
     // A short wooden "click" — captures are lower/heavier, checks add a chirp.
-    o.type = "triangle";
-    const f0 = isCapture ? 200 : 340;
+    // The computer's pieces get a slightly different timbre and pitch so you
+    // can tell its moves apart from yours by ear.
+    o.type = isComputer ? "square" : "triangle";
+    let f0 = isCapture ? 200 : 340;
+    if (isComputer) f0 *= 0.78; // a touch deeper/duller for the computer
     o.frequency.setValueAtTime(f0, now);
     o.frequency.exponentialRampToValueAtTime(f0 * 0.5, now + 0.05);
     g.gain.setValueAtTime(0.0001, now);
-    g.gain.exponentialRampToValueAtTime(isCapture ? 0.38 : 0.28, now + 0.004);
+    g.gain.exponentialRampToValueAtTime(isCapture ? 0.38 : (isComputer ? 0.2 : 0.28), now + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
     o.connect(g).connect(ctx.destination);
     o.start(now); o.stop(now + 0.14);
@@ -910,7 +913,10 @@ function playMove(m) {
   history.push(m);
   selected = -1;
   legalForSelected = [];
-  playMoveSound(!!m.capture, checking);
+  // st.turn has already flipped, so the side that just moved is the opposite.
+  const moverColor = st.turn === "w" ? "b" : "w";
+  const isComputer = moverColor !== humanColor;
+  playMoveSound(!!m.capture, checking, isComputer);
   render();
 }
 
