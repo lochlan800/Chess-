@@ -911,7 +911,9 @@ function showEndOverlay() {
       emoji = "😔"; title = "Checkmate"; sub = "The computer won this one — try again!";
     }
   } else {
-    emoji = "🤝"; title = "It's a draw"; sub = gameOver.result.replace(/^Draw\s*[—-]\s*/, "");
+    emoji = "🤝"; title = "It's a draw";
+    sub = gameOver.result.replace(/^Draw\s*[—-]\s*/, "");
+    sub = sub.charAt(0).toUpperCase() + sub.slice(1);
   }
   endEmoji.textContent = emoji;
   endTitle.textContent = title;
@@ -919,12 +921,47 @@ function showEndOverlay() {
   endOverlay.style.display = "flex";
 }
 
-function insufficientMaterial(board) {
-  const pieces = [];
-  for (const p of board) if (p && p.toUpperCase() !== "K") pieces.push(p.toUpperCase());
-  if (pieces.length === 0) return true;
-  if (pieces.length === 1 && (pieces[0] === "B" || pieces[0] === "N")) return true;
-  return false;
+// Returns a plain-English reason when the position can never be won (a draw by
+// insufficient / non-forcing material), or null otherwise. Covers every such
+// case: bare kings, a lone minor piece, two knights vs a lone king, and any
+// number of bishops that all stand on one colour of square.
+function materialDrawReason(board) {
+  const w = [], b = [];          // non-king pieces per side, e.g. "N", "B"
+  const bishopSquareColors = []; // 0 = light, 1 = dark, for every bishop
+  for (let sq = 0; sq < 64; sq++) {
+    const p = board[sq];
+    if (!p) continue;
+    const up = p.toUpperCase();
+    if (up === "K") continue;
+    if (up === "P" || up === "R" || up === "Q") return null; // a pawn/rook/queen can mate
+    (p === up ? w : b).push(up);
+    if (up === "B") bishopSquareColors.push(((sq >> 3) + (sq & 7)) & 1);
+  }
+  const total = w.length + b.length;
+
+  if (total === 0)
+    return "only the two kings are left, so checkmate is impossible.";
+
+  if (total === 1) {
+    const piece = (w.length ? w : b)[0];
+    return piece === "N"
+      ? "a lone king plus a single knight cannot force checkmate."
+      : "a lone king plus a single bishop cannot force checkmate.";
+  }
+
+  // King + two knights vs a lone king: a real mate exists but it cannot be forced.
+  if ((w.length === 2 && b.length === 0 && w[0] === "N" && w[1] === "N") ||
+      (b.length === 2 && w.length === 0 && b[0] === "N" && b[1] === "N"))
+    return "a king and two knights cannot force checkmate against a lone king.";
+
+  // Only bishops left, and every bishop (both sides) is on the same colour:
+  // neither side can ever attack the other colour of square, so mate is impossible.
+  const onlyBishops = w.every(x => x === "B") && b.every(x => x === "B");
+  if (onlyBishops && bishopSquareColors.length === total &&
+      bishopSquareColors.every(c => c === bishopSquareColors[0]))
+    return "all the remaining bishops are on the same colour of square, so checkmate is impossible.";
+
+  return null;
 }
 
 function checkGameEnd() {
@@ -941,7 +978,10 @@ function checkGameEnd() {
   }
   if (st.half >= 100) gameOver = { result: "Draw — 50-move rule." };
   else if (repMap[repKey(st)] >= 3) gameOver = { result: "Draw — threefold repetition." };
-  else if (insufficientMaterial(st.board)) gameOver = { result: "Draw — insufficient material." };
+  else {
+    const reason = materialDrawReason(st.board);
+    if (reason) gameOver = { result: "Draw — " + reason };
+  }
 }
 
 function playMove(m) {
