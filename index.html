@@ -19,6 +19,10 @@
     --accent: #7aa2f7;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* Square size is fully responsive: fit the board to the viewport width (and
+     height), capped at 72px, so it never spills past the screen edges. */
+  :root { --sq: min(calc((100vw - 28px) / 8), calc((100vh - 130px) / 8), 72px); }
+  html, body { max-width: 100%; overflow-x: hidden; }
   body {
     font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
     background: radial-gradient(1200px 800px at 30% 10%, var(--bg2), var(--bg1));
@@ -28,6 +32,11 @@
     align-items: center;
     justify-content: center;
     padding: 16px;
+  }
+  @media (max-width: 700px) {
+    body { padding: 10px; align-items: flex-start; }
+    .app { gap: 14px; }
+    :root { --sq: min(calc((100vw - 20px) / 8), 72px); }
   }
   .app {
     display: flex;
@@ -152,8 +161,12 @@
     border-radius: 12px;
     padding: 20px;
     width: 300px;
+    max-width: 100%;
     box-shadow: 0 12px 40px rgba(0,0,0,0.4);
     display: flex; flex-direction: column; gap: 14px;
+  }
+  @media (max-width: 700px) {
+    .panel { width: calc(8 * var(--sq)); }
   }
   .status {
     font-size: 15px; font-weight: 600;
@@ -1088,12 +1101,6 @@ function render() {
   else endOverlay.style.display = "none";
 }
 
-function fitBoard() {
-  const max = Math.min(window.innerWidth - 32, 620, window.innerHeight - 140);
-  const sq = Math.max(36, Math.floor(max / 8));
-  document.documentElement.style.setProperty("--sq", sq + "px");
-}
-
 levelEl.addEventListener("change", () => {
   levelInfoEl.textContent = LEVELS[parseInt(levelEl.value, 10)].info;
 });
@@ -1108,10 +1115,8 @@ soundBtn.addEventListener("click", () => {
   soundBtn.setAttribute("aria-pressed", String(soundOn));
   if (soundOn) playMoveSound(false, false); // little confirmation blip
 });
-window.addEventListener("resize", () => { fitBoard(); });
 
 levelInfoEl.textContent = LEVELS[parseInt(levelEl.value, 10)].info;
-fitBoard();
 resetGame();
 </script>
 </body>
