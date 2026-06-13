@@ -161,45 +161,45 @@
   .review-box {
     background: var(--panel);
     border-radius: 14px;
-    padding: 22px 24px;
+    padding: 22px 28px;
     box-shadow: 0 14px 44px rgba(0,0,0,0.65);
-    width: min(560px, 92vw);
-    max-height: 88vh;
-    display: flex; flex-direction: column;
     animation: pop 0.35s cubic-bezier(0.2, 1.4, 0.5, 1);
   }
-  .review-title { font-size: 22px; font-weight: 700; margin-bottom: 10px; text-align: center; }
-  .review-progress { font-size: 13px; color: var(--muted); text-align: center; margin-bottom: 10px; }
-  .review-body { overflow-y: auto; text-align: left; margin-bottom: 16px; }
-  .rv-summary { font-size: 14px; line-height: 1.5; margin-bottom: 14px; }
-  .rv-summary b { color: var(--accent); }
-  .rv-chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
-  .rv-chip { font-size: 12px; padding: 4px 10px; border-radius: 20px; background: rgba(0,0,0,0.3); }
-  .rv-chip.blunder { color: #ffb4a2; }
-  .rv-chip.mistake { color: #ffd479; }
-  .rv-chip.inacc { color: #9ec7ff; }
-  .rv-item {
-    border-left: 3px solid var(--accent);
-    background: rgba(0,0,0,0.22);
-    border-radius: 6px;
-    padding: 10px 12px; margin-bottom: 10px;
-  }
-  .rv-item.blunder { border-left-color: #ff6b5e; }
-  .rv-item.mistake { border-left-color: #ffc14d; }
-  .rv-item.inacc { border-left-color: #7aa2f7; }
-  .rv-head { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
-  .rv-head .tag { font-size: 11px; padding: 1px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
-  .rv-item.blunder .tag { background: rgba(255,107,94,0.25); color: #ffb4a2; }
-  .rv-item.mistake .tag { background: rgba(255,193,77,0.25); color: #ffd479; }
-  .rv-item.inacc .tag { background: rgba(122,162,247,0.25); color: #9ec7ff; }
-  .rv-detail { font-size: 13px; color: var(--text); line-height: 1.45; }
-  .rv-fix { font-size: 12.5px; color: #b8e994; line-height: 1.45; margin-top: 5px; }
-  .rv-fix::before { content: "✅ "; }
+  .review-title { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+  .review-progress { font-size: 13px; color: var(--muted); margin-top: 8px; }
   .rv-spin {
-    width: 22px; height: 22px; margin: 8px auto;
+    width: 26px; height: 26px; margin: 12px auto;
     border: 3px solid var(--muted); border-top-color: var(--accent);
     border-radius: 50%; animation: spin 0.8s linear infinite;
   }
+
+  /* Move-by-move review bar shown under the board */
+  .reviewbar {
+    width: calc(8 * var(--sq));
+    max-width: 100%;
+    margin-top: 12px;
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  .rv-summary { font-size: 12.5px; line-height: 1.5; color: var(--muted); margin-bottom: 10px; }
+  .rv-summary b { color: var(--accent); }
+  .rv-comment {
+    font-size: 14px; line-height: 1.45; min-height: 64px;
+    background: rgba(0,0,0,0.25); border-radius: 8px; padding: 10px 12px;
+    border-left: 4px solid var(--accent); margin-bottom: 10px;
+  }
+  .rv-comment.blunder { border-left-color: #ff6b5e; }
+  .rv-comment.mistake { border-left-color: #ffc14d; }
+  .rv-comment.inacc  { border-left-color: #9ec7ff; }
+  .rv-comment.good   { border-left-color: #7bd88f; }
+  .rv-comment .rv-move { font-weight: 700; display: block; margin-bottom: 3px; }
+  .rv-comment .rv-fix { display: block; margin-top: 6px; color: #b8e994; font-size: 13px; }
+  .rv-comment .rv-fix::before { content: "✅ "; }
+  .rv-nav { display: flex; gap: 8px; align-items: center; }
+  .rv-nav .btn { flex: 1; padding: 9px 8px; }
+  .rv-counter { font-size: 12px; color: var(--muted); min-width: 78px; text-align: center; }
 
   .panel {
     background: var(--panel);
@@ -321,15 +321,22 @@
       </div>
 
       <div class="end-overlay" id="reviewOverlay" style="display:none">
-        <div class="review-box">
-          <div class="review-title">📋 Game Review</div>
+        <div class="review-box" style="text-align:center">
+          <div class="review-title">📋 Analysing your game…</div>
+          <div class="rv-spin"></div>
           <div class="review-progress" id="reviewProgress"></div>
-          <div class="review-body" id="reviewBody"></div>
-          <div class="end-btns">
-            <button class="btn" id="reviewClose">Close</button>
-            <button class="btn primary" id="reviewNewGame">Play New Game</button>
-          </div>
         </div>
+      </div>
+    </div>
+
+    <div class="reviewbar" id="reviewBar" style="display:none">
+      <div class="rv-summary" id="reviewSummary"></div>
+      <div class="rv-comment" id="reviewComment"></div>
+      <div class="rv-nav">
+        <button class="btn" id="rvBack">◀ Back</button>
+        <span class="rv-counter" id="rvCounter"></span>
+        <button class="btn" id="rvNext">Next ▶</button>
+        <button class="btn" id="rvExit">Done</button>
       </div>
     </div>
   </div>
@@ -897,8 +904,11 @@ const capByHumanEl = document.getElementById("capByHuman");
 const capByAiEl = document.getElementById("capByAi");
 const tipEl = document.getElementById("tip");
 const reviewOverlay = document.getElementById("reviewOverlay");
-const reviewBody = document.getElementById("reviewBody");
 const reviewProgress = document.getElementById("reviewProgress");
+const reviewBar = document.getElementById("reviewBar");
+const reviewSummary = document.getElementById("reviewSummary");
+const reviewComment = document.getElementById("reviewComment");
+const rvCounter = document.getElementById("rvCounter");
 const endOverlay = document.getElementById("endOverlay");
 const endEmoji = document.getElementById("endEmoji");
 const endTitle = document.getElementById("endTitle");
@@ -962,13 +972,19 @@ function resetGame() {
   promoOverlay.style.display = "none";
   endOverlay.style.display = "none";
   reviewOverlay.style.display = "none";
+  reviewBar.style.display = "none";
   reviewAbort = true;
+  reviewMode = false;
+  reviewSteps = [];
   render();
   maybeAiTurn();
 }
 
-/* ---- Post-game review: compares each of your moves with the best move ---- */
+/* ---- Post-game review: step through the game move by move with coaching ---- */
 let reviewAbort = false;
+let reviewMode = false;
+let reviewSteps = [];
+let reviewIdx = 0;
 
 // Score every legal move for the side to move (no noise), best first.
 function scoreAllMoves(state, depth, timeMs) {
@@ -993,10 +1009,10 @@ function scoreAllMoves(state, depth, timeMs) {
 }
 
 function gradeOf(loss, allowedMate) {
-  if (allowedMate || loss >= 250) return "blunder";
-  if (loss >= 120) return "mistake";
-  if (loss >= 60) return "inacc";
-  return null;
+  if (allowedMate || loss >= 320) return "blunder";   // ~ a minor piece or more
+  if (loss >= 200) return "mistake";
+  if (loss >= 120) return "inacc";
+  return null;                                          // sensible move -> praised
 }
 
 // Build the "what went wrong" + "how to fix it" text for one flagged move.
@@ -1019,23 +1035,42 @@ function reviewReason(r) {
            fix: "After choosing a move, pause and ask \"what is the computer's best reply?\" Looking one move deeper catches most slips." };
 }
 
+// Commentary for one of your moves (graded) or a praising note for a good one.
+function moveComment(r, grade) {
+  if (grade) {
+    const reason = reviewReason(r);
+    const label = grade === "blunder" ? "❌ Blunder" : grade === "mistake" ? "⚠️ Mistake" : "🤔 Inaccuracy";
+    return { grade, html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — ${label}</span>${reason.detail}<span class="rv-fix">${reason.fix}</span>` };
+  }
+  const wasBest = r.bestMove && r.bestMove.from === r.playedFrom && r.bestMove.to === r.playedTo;
+  let why = wasBest ? "That's exactly what the engine would play here." : "A safe, sensible choice.";
+  if (r.captured && VAL[r.captured.toUpperCase()] >= 300)
+    why = `Nice — you won material by taking the ${PIECE_NAME[r.captured.toUpperCase()]}.`;
+  return { grade: "good", html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — 👍 Good move</span>${why}` };
+}
+
 function startReview() {
   reviewAbort = false;
+  reviewMode = false;
   endOverlay.style.display = "none";
   reviewOverlay.style.display = "flex";
-  reviewBody.innerHTML = '<div class="rv-spin"></div>';
-  reviewProgress.textContent = "Analysing your moves…";
+  reviewProgress.textContent = "Starting…";
 
   const moves = history.slice();
   const humanSide = humanColor;
   const s = newState();
-  const results = [];
+  reviewSteps = [{
+    board: s.board.slice(), from: -1, to: -1, stm: s.turn, grade: null,
+    html: `<span class="rv-move">Starting position</span>Press <b>Next ▶</b> to walk through the game — I'll explain each of your moves.`,
+  }];
+  const stats = { count: 0, blunder: 0, mistake: 0, inacc: 0, lossSum: 0, worst: null };
   let i = 0;
 
   function step() {
     if (reviewAbort) return;
-    if (i >= moves.length) { reviewProgress.textContent = ""; renderReview(results, humanSide); return; }
+    if (i >= moves.length) { finishReview(stats); return; }
     const mv = moves[i];
+    const moveNum = Math.floor(i / 2) + 1;
     if (s.turn === humanSide) {
       const scored = scoreAllMoves(s, 3, 450);
       const best = scored[0];
@@ -1045,61 +1080,56 @@ function startReview() {
       const allowedMate = actual.sc <= -90000;
       const beforeBoard = s.board.slice();
       makeMove(s, mv);
-      results.push({ ply: i, moveNum: Math.floor(i / 2) + 1, color: humanSide,
-                     played: mv.nota, bestMove: best.m, loss, allowedMate,
-                     beforeBoard, afterBoard: s.board.slice() });
+      const r = { moveNum, color: humanSide, played: mv.nota, bestMove: best.m, loss, allowedMate,
+                  beforeBoard, afterBoard: s.board.slice(), captured: mv.capture,
+                  playedFrom: mv.from, playedTo: mv.to };
+      const grade = gradeOf(loss, allowedMate);
+      stats.count++; stats.lossSum += Math.min(800, loss);
+      if (grade === "blunder") stats.blunder++;
+      else if (grade === "mistake") stats.mistake++;
+      else if (grade === "inacc") stats.inacc++;
+      if (grade && (!stats.worst || (allowedMate ? 1e9 : loss) > (stats.worst.allowedMate ? 1e9 : stats.worst.loss)))
+        stats.worst = r;
+      const c = moveComment(r, grade);
+      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: c.grade, html: c.html });
     } else {
       makeMove(s, mv);
+      const compColor = humanSide === "w" ? "b" : "w";
+      const free = findUndefended(s.board, compColor);
+      let html = `<span class="rv-move">Move ${moveNum}. Computer played ${mv.nota}</span>`;
+      html += (free && free.v >= 300)
+        ? `💡 It left its ${PIECE_NAME[free.p.toUpperCase()]} on ${sqName(free.sq)} undefended — that was a chance for you.`
+        : `The computer replies.`;
+      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: null, html });
     }
     i++;
-    reviewProgress.textContent = `Analysing… move ${Math.ceil(i / 2)}`;
+    reviewProgress.textContent = `Analysing… move ${Math.ceil(i / 2)} of ${Math.ceil(moves.length / 2)}`;
     setTimeout(step, 0);
   }
   setTimeout(step, 30);
 }
 
-function renderReview(results, humanSide) {
-  if (results.length === 0) {
-    reviewBody.innerHTML = `<div class="rv-summary">No moves to review yet — play a game first!</div>`;
-    return;
-  }
-  const graded = results.map(r => ({ r, grade: gradeOf(r.loss, r.allowedMate) }));
-  const blunders = graded.filter(g => g.grade === "blunder");
-  const mistakes = graded.filter(g => g.grade === "mistake");
-  const inacc = graded.filter(g => g.grade === "inacc");
-  const avgLoss = results.reduce((a, r) => a + Math.min(800, r.loss), 0) / results.length;
-  const accuracy = Math.max(25, Math.min(99, Math.round(100 - avgLoss / 9)));
+function finishReview(stats) {
+  const acc = stats.count ? Math.max(25, Math.min(99, Math.round(100 - (stats.lossSum / stats.count) / 9))) : 100;
+  let summary = `<b>${acc}% accuracy</b> across your ${stats.count} moves — `
+    + `${stats.blunder} blunder${stats.blunder === 1 ? "" : "s"}, `
+    + `${stats.mistake} mistake${stats.mistake === 1 ? "" : "s"}, `
+    + `${stats.inacc} inaccurac${stats.inacc === 1 ? "y" : "ies"}. `;
+  summary += stats.worst ? `Biggest lesson: ${reviewReason(stats.worst).fix}` : "Clean game — no real mistakes. Keep it up!";
+  reviewSummary.innerHTML = summary;
+  reviewOverlay.style.display = "none";
+  reviewMode = true;
+  reviewIdx = 0;
+  reviewBar.style.display = "block";
+  showReviewStep();
+}
 
-  let html = `<div class="rv-summary">You played <b>${results.length}</b> moves with an estimated accuracy of <b>${accuracy}%</b>.`;
-  if (blunders.length + mistakes.length === 0) {
-    html += ` No major mistakes — nicely done! Keep working on small inaccuracies (${inacc.length}).</div>`;
-  } else {
-    html += `</div><div class="rv-chips">
-      <span class="rv-chip blunder">${blunders.length} blunder${blunders.length === 1 ? "" : "s"}</span>
-      <span class="rv-chip mistake">${mistakes.length} mistake${mistakes.length === 1 ? "" : "s"}</span>
-      <span class="rv-chip inacc">${inacc.length} inaccurac${inacc.length === 1 ? "y" : "ies"}</span></div>`;
-  }
-
-  const show = graded
-    .filter(g => g.grade === "blunder" || g.grade === "mistake")
-    .sort((a, b) => (b.r.allowedMate ? 1e9 : b.r.loss) - (a.r.allowedMate ? 1e9 : a.r.loss))
-    .slice(0, 6);
-
-  const tag = { blunder: "Blunder", mistake: "Mistake" };
-  for (const g of show) {
-    const reason = reviewReason(g.r);
-    html += `<div class="rv-item ${g.grade}">
-      <div class="rv-head">Move ${g.r.moveNum}: ${g.r.played}<span class="tag">${tag[g.grade]}</span></div>
-      <div class="rv-detail">${reason.detail}</div>
-      <div class="rv-fix">Next time: ${reason.fix}</div>
-    </div>`;
-  }
-
-  if (show.length) {
-    const lesson = reviewReason(show[0].r).fix;
-    html += `<div class="rv-summary" style="margin-top:6px"><b>Biggest lesson:</b> ${lesson}</div>`;
-  }
-  reviewBody.innerHTML = html;
+function showReviewStep() {
+  const stp = reviewSteps[reviewIdx];
+  reviewComment.className = "rv-comment" + (stp.grade ? " " + stp.grade : "");
+  reviewComment.innerHTML = stp.html;
+  rvCounter.textContent = reviewIdx === 0 ? "Start" : `Move ${reviewIdx} / ${reviewSteps.length - 1}`;
+  render();
 }
 
 function showEndOverlay() {
@@ -1250,7 +1280,7 @@ function maybeAiTurn() {
 }
 
 function onSquareClick(sq) {
-  if (gameOver || thinking || pendingPromo || st.turn !== humanColor) return;
+  if (reviewMode || gameOver || thinking || pendingPromo || st.turn !== humanColor) return;
   const p = st.board[sq];
 
   if (selected >= 0) {
@@ -1425,9 +1455,13 @@ function renderMoveList() {
 
 function render() {
   const flip = humanColor === "b";
-  const last = history[history.length - 1];
-  const checkedKing = (!gameOver || /Checkmate/.test(gameOver.result)) && inCheck(st, st.turn)
-    ? kingSq(st.board, st.turn) : -1;
+  const reviewing = reviewMode && reviewSteps.length > 0;
+  const board = reviewing ? reviewSteps[reviewIdx].board : st.board;
+  const last = reviewing ? reviewSteps[reviewIdx] : history[history.length - 1];
+  const stm = reviewing ? reviewSteps[reviewIdx].stm : st.turn;
+  const inCheckNow = attacked(board, kingSq(board, stm), stm === "w" ? "b" : "w");
+  const checkedKing = (reviewing || !gameOver || /Checkmate/.test(gameOver.result)) && inCheckNow
+    ? kingSq(board, stm) : -1;
 
   boardEl.innerHTML = "";
   for (let row = 0; row < 8; row++) {
@@ -1441,7 +1475,7 @@ function render() {
       if (sq === selected) cell.classList.add("selected");
       if (sq === checkedKing) cell.classList.add("incheck");
 
-      const p = st.board[sq];
+      const p = board[sq];
       if (p) {
         const span = document.createElement("span");
         span.className = "piece " + colorOf(p);
@@ -1474,6 +1508,7 @@ function render() {
   renderTip();
   renderCaptured();
   renderMoveList();
+  if (reviewMode) return;             // review bar drives the UI; leave overlays alone
   if (gameOver) showEndOverlay();
   else endOverlay.style.display = "none";
 }
@@ -1484,12 +1519,17 @@ levelEl.addEventListener("change", () => {
 sideEl.addEventListener("change", resetGame);
 document.getElementById("newgame").addEventListener("click", resetGame);
 document.getElementById("endNewGame").addEventListener("click", resetGame);
-document.getElementById("reviewNewGame").addEventListener("click", resetGame);
 document.getElementById("reviewBtn").addEventListener("click", startReview);
-document.getElementById("reviewClose").addEventListener("click", () => {
-  reviewAbort = true;
-  reviewOverlay.style.display = "none";
-  endOverlay.style.display = "flex";
+document.getElementById("rvNext").addEventListener("click", () => {
+  if (reviewIdx < reviewSteps.length - 1) { reviewIdx++; showReviewStep(); }
+});
+document.getElementById("rvBack").addEventListener("click", () => {
+  if (reviewIdx > 0) { reviewIdx--; showReviewStep(); }
+});
+document.getElementById("rvExit").addEventListener("click", () => {
+  reviewMode = false;
+  reviewBar.style.display = "none";
+  render();                       // gameOver still set → end overlay returns
 });
 document.getElementById("undo").addEventListener("click", undo);
 const soundBtn = document.getElementById("sound");
