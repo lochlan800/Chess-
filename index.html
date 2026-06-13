@@ -201,6 +201,35 @@
   .rv-nav .btn { flex: 1; padding: 9px 8px; }
   .rv-counter { font-size: 12px; color: var(--muted); min-width: 78px; text-align: center; }
 
+  #heatOverlay { position: fixed; z-index: 55; }
+  .heat-box {
+    background: var(--panel); border-radius: 14px; padding: 20px 22px;
+    box-shadow: 0 14px 44px rgba(0,0,0,0.65); text-align: center;
+    animation: pop 0.35s cubic-bezier(0.2, 1.4, 0.5, 1); max-width: 94vw;
+  }
+  .heat-toggle { display: flex; gap: 6px; justify-content: center; margin: 12px 0; flex-wrap: wrap; }
+  .heat-toggle .btn { width: auto; padding: 8px 12px; font-size: 13px; }
+  .heat-toggle .btn.active { background: var(--accent); color: #14171f; font-weight: 700; border: none; }
+  .heat-grid {
+    display: grid;
+    grid-template-columns: 16px repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr) 16px;
+    gap: 2px;
+    width: min(360px, 82vw);
+    aspect-ratio: 1 / 1;
+    margin: 0 auto;
+  }
+  .heat-cell {
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 3px; font-size: 12px; font-weight: 700; color: #f4f6fb;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+  }
+  .heat-label { display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
+  .heat-legend { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 14px 0 6px; font-size: 11px; color: var(--muted); }
+  .heat-bar { width: 140px; height: 10px; border-radius: 5px;
+    background: linear-gradient(90deg, hsl(240,70%,50%), hsl(120,70%,48%), hsl(0,75%,52%)); }
+  .heat-caption { font-size: 13px; color: var(--text); line-height: 1.45; margin-bottom: 14px; min-height: 20px; }
+
   .panel {
     background: var(--panel);
     border-radius: 12px;
@@ -327,6 +356,21 @@
           <div class="review-progress" id="reviewProgress"></div>
         </div>
       </div>
+
+      <div class="end-overlay" id="heatOverlay" style="display:none">
+        <div class="heat-box">
+          <div class="review-title">🔥 Capture Heatmap</div>
+          <div class="heat-toggle">
+            <button class="btn" id="heatYou">Your captures</button>
+            <button class="btn" id="heatAi">Computer's</button>
+            <button class="btn" id="heatPerfect">Perfect game</button>
+          </div>
+          <div class="heat-grid" id="heatGrid"></div>
+          <div class="heat-legend"><span>fewer</span><div class="heat-bar"></div><span>more</span></div>
+          <div class="heat-caption" id="heatCaption"></div>
+          <button class="btn primary" id="heatClose">Close</button>
+        </div>
+      </div>
     </div>
 
     <div class="reviewbar" id="reviewBar" style="display:none">
@@ -336,6 +380,9 @@
         <button class="btn" id="rvBack">◀ Back</button>
         <span class="rv-counter" id="rvCounter"></span>
         <button class="btn" id="rvNext">Next ▶</button>
+      </div>
+      <div class="rv-nav" style="margin-top:8px">
+        <button class="btn" id="rvHeat">🔥 Heatmap</button>
         <button class="btn" id="rvExit">Done</button>
       </div>
     </div>
@@ -909,6 +956,9 @@ const reviewBar = document.getElementById("reviewBar");
 const reviewSummary = document.getElementById("reviewSummary");
 const reviewComment = document.getElementById("reviewComment");
 const rvCounter = document.getElementById("rvCounter");
+const heatOverlay = document.getElementById("heatOverlay");
+const heatGrid = document.getElementById("heatGrid");
+const heatCaption = document.getElementById("heatCaption");
 const endOverlay = document.getElementById("endOverlay");
 const endEmoji = document.getElementById("endEmoji");
 const endTitle = document.getElementById("endTitle");
@@ -973,6 +1023,7 @@ function resetGame() {
   endOverlay.style.display = "none";
   reviewOverlay.style.display = "none";
   reviewBar.style.display = "none";
+  heatOverlay.style.display = "none";
   reviewAbort = true;
   reviewMode = false;
   reviewSteps = [];
@@ -1130,6 +1181,102 @@ function showReviewStep() {
   reviewComment.innerHTML = stp.html;
   rvCounter.textContent = reviewIdx === 0 ? "Start" : `Move ${reviewIdx} / ${reviewSteps.length - 1}`;
   render();
+}
+
+/* ---- Capture heatmaps ---- */
+let perfectMap = null;       // cached engine-vs-engine capture map
+let heatView = "you";
+
+// The square a capture "happened" on (the captured piece's square).
+function captureSquare(m) {
+  return m.flag === "ep" ? ((m.from >> 3) * 8 + (m.to & 7)) : m.to;
+}
+
+// Count captures over a move list, optionally only for one mover ("w"/"b"/null).
+function captureCounts(moves, byColor) {
+  const arr = new Array(64).fill(0);
+  moves.forEach((m, i) => {
+    if (!m.capture) return;
+    const mover = (i % 2 === 0) ? "w" : "b";
+    if (byColor && mover !== byColor) return;
+    arr[captureSquare(m)]++;
+  });
+  return arr;
+}
+
+// One strong-but-fast engine-vs-engine game; returns its capture counts.
+function generatePerfectMap() {
+  const arr = new Array(64).fill(0);
+  const s = newState();
+  for (let n = 0; n < 130; n++) {
+    const moves = legalMoves(s);
+    if (moves.length === 0 || s.half >= 100) break;
+    const scored = scoreAllMoves(s, 2, 120);
+    // pick randomly among near-best moves so the game isn't sterile/repetitive
+    const top = scored.filter(e => e.sc >= scored[0].sc - 40);
+    const m = top[Math.floor(Math.random() * top.length)].m;
+    if (m.capture) arr[captureSquare(m)]++;
+    makeMove(s, m);
+  }
+  return arr;
+}
+
+function heatColor(v, max) {
+  if (v <= 0 || max <= 0) return "#2c3346"; // neutral empty square
+  const t = v / max;                         // 0..1
+  const hue = 240 - 240 * t;                 // blue (low) -> green -> red (high)
+  return `hsl(${hue}, 72%, 48%)`;
+}
+
+function renderHeat() {
+  let data, label;
+  if (heatView === "you") { data = captureCounts(history, humanColor); label = "you"; }
+  else if (heatView === "ai") { data = captureCounts(history, humanColor === "w" ? "b" : "w"); label = "the computer"; }
+  else {
+    if (!perfectMap) perfectMap = generatePerfectMap();
+    data = perfectMap; label = "a perfect game";
+  }
+  const max = Math.max(1, ...data);
+  const total = data.reduce((a, b) => a + b, 0);
+
+  let html = "";
+  for (let row = 0; row < 8; row++) {
+    html += `<div class="heat-label">${8 - row}</div>`;
+    for (let col = 0; col < 8; col++) {
+      const sq = row * 8 + col;
+      const v = data[sq];
+      html += `<div class="heat-cell" style="background:${heatColor(v, max)}">${v || ""}</div>`;
+    }
+  }
+  html += `<div class="heat-label"></div>`;
+  for (let col = 0; col < 8; col++) html += `<div class="heat-label">${"abcdefgh"[col]}</div>`;
+  heatGrid.innerHTML = html;
+
+  // caption: total + hottest square
+  let hot = -1, hotV = 0;
+  for (let sq = 0; sq < 64; sq++) if (data[sq] > hotV) { hotV = data[sq]; hot = sq; }
+  heatCaption.textContent = total === 0
+    ? `No pieces were captured by ${label}.`
+    : `${total} piece${total === 1 ? "" : "s"} captured by ${label}. Hottest square: ${sqName(hot)} (${hotV}). Red = more captures, blue = fewer.`;
+}
+
+function setHeatView(view) {
+  heatView = view;
+  document.getElementById("heatYou").classList.toggle("active", view === "you");
+  document.getElementById("heatAi").classList.toggle("active", view === "ai");
+  document.getElementById("heatPerfect").classList.toggle("active", view === "perfect");
+  if (view === "perfect" && !perfectMap) {
+    heatCaption.textContent = "Generating a perfect game…";
+    heatGrid.innerHTML = '<div class="rv-spin" style="grid-column:1 / -1"></div>';
+    setTimeout(renderHeat, 30);
+  } else {
+    renderHeat();
+  }
+}
+
+function openHeatmap() {
+  heatOverlay.style.display = "flex";
+  setHeatView("you");
 }
 
 function showEndOverlay() {
@@ -1531,6 +1678,11 @@ document.getElementById("rvExit").addEventListener("click", () => {
   reviewBar.style.display = "none";
   render();                       // gameOver still set → end overlay returns
 });
+document.getElementById("rvHeat").addEventListener("click", openHeatmap);
+document.getElementById("heatClose").addEventListener("click", () => { heatOverlay.style.display = "none"; });
+document.getElementById("heatYou").addEventListener("click", () => setHeatView("you"));
+document.getElementById("heatAi").addEventListener("click", () => setHeatView("ai"));
+document.getElementById("heatPerfect").addEventListener("click", () => setHeatView("perfect"));
 document.getElementById("undo").addEventListener("click", undo);
 const soundBtn = document.getElementById("sound");
 soundBtn.addEventListener("click", () => {
