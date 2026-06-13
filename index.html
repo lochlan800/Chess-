@@ -84,6 +84,17 @@
     content: ""; position: absolute; inset: 0;
     background: radial-gradient(circle, var(--check) 0%, transparent 75%);
   }
+  /* Review marks: ring the referenced square instead of quoting coordinates. */
+  .sq.mk-danger::after, .sq.mk-good::after {
+    content: ""; position: absolute; inset: 6%;
+    border-radius: 50%;
+    border: calc(var(--sq, 64px) * 0.08) solid;
+    z-index: 3; pointer-events: none;
+    animation: markpulse 1s ease-in-out infinite;
+  }
+  .sq.mk-danger::after { border-color: #ff3b30; box-shadow: 0 0 10px #ff3b30; }
+  .sq.mk-good::after   { border-color: #25d366; box-shadow: 0 0 10px #25d366; }
+  @keyframes markpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
   .sq .dot {
     position: absolute;
     width: 30%; height: 30%;
@@ -1066,24 +1077,30 @@ function gradeOf(loss, allowedMate) {
   return null;                                          // sensible move -> praised
 }
 
-// Build the "what went wrong" + "how to fix it" text for one flagged move.
+// Build the "what went wrong" + "how to fix it" text plus board marks. Marks
+// point at the squares on the review board so we don't quote coordinates:
+//   danger (red) = your piece left hanging, good (green) = a free enemy piece.
 function reviewReason(r) {
   if (r.allowedMate)
-    return { detail: `${r.played} let the computer set up a forced checkmate.`,
-             fix: "Check the computer's reply for checks and mating threats before you move, and keep your king safe — castle early and leave it escape squares." };
+    return { detail: `This let the computer set up a forced checkmate.`,
+             fix: "Check the computer's reply for checks and mating threats before you move, and keep your king safe — castle early and leave it escape squares.",
+             marks: [] };
   const hung = findUndefended(r.afterBoard, r.color);
   if (hung && hung.v >= 300)
-    return { detail: `After ${r.played}, your ${PIECE_NAME[hung.p.toUpperCase()]} on ${sqName(hung.sq)} was left undefended and could be taken for free. ${moveNotation(r.bestMove)} was stronger.`,
-             fix: "Before committing a move, check whether it leaves one of your pieces undefended and attacked. If it does, defend it or pick a safer move." };
+    return { detail: `It left your ${PIECE_NAME[hung.p.toUpperCase()]} undefended and free to capture — see the square marked red. A safer move was available.`,
+             fix: "Before committing a move, check whether it leaves one of your pieces undefended and attacked. If it does, defend it or pick a safer move.",
+             marks: [{ sq: hung.sq, kind: "danger" }] };
   if (r.bestMove.capture) {
     const opp = r.color === "w" ? "b" : "w";
     const tgt = r.bestMove.to;
     if (attacked(r.beforeBoard, tgt, r.color) && !attacked(r.beforeBoard, tgt, opp))
-      return { detail: `You missed free material: ${moveNotation(r.bestMove)} would have won the undefended ${PIECE_NAME[r.bestMove.capture.toUpperCase()]} on ${sqName(tgt)}.`,
-               fix: "Every move, scan for undefended enemy pieces — winning free material is the easiest path to victory." };
+      return { detail: `You missed free material — you could have captured the undefended ${PIECE_NAME[r.bestMove.capture.toUpperCase()]} on the square marked green.`,
+               fix: "Every move, scan for undefended enemy pieces — winning free material is the easiest path to victory.",
+               marks: [{ sq: tgt, kind: "good" }] };
   }
-  return { detail: `${r.played} gave up about ${(r.loss / 100).toFixed(1)} points. A stronger move was ${moveNotation(r.bestMove)}.`,
-           fix: "After choosing a move, pause and ask \"what is the computer's best reply?\" Looking one move deeper catches most slips." };
+  return { detail: `This gave up about ${(r.loss / 100).toFixed(1)} points — a stronger move was available.`,
+           fix: "After choosing a move, pause and ask \"what is the computer's best reply?\" Looking one move deeper catches most slips.",
+           marks: [] };
 }
 
 // Commentary for one of your moves (graded) or a praising note for a good one.
@@ -1091,13 +1108,15 @@ function moveComment(r, grade) {
   if (grade) {
     const reason = reviewReason(r);
     const label = grade === "blunder" ? "❌ Blunder" : grade === "mistake" ? "⚠️ Mistake" : "🤔 Inaccuracy";
-    return { grade, html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — ${label}</span>${reason.detail}<span class="rv-fix">${reason.fix}</span>` };
+    return { grade, marks: reason.marks,
+             html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — ${label}</span>${reason.detail}<span class="rv-fix">${reason.fix}</span>` };
   }
   const wasBest = r.bestMove && r.bestMove.from === r.playedFrom && r.bestMove.to === r.playedTo;
   let why = wasBest ? "That's exactly what the engine would play here." : "A safe, sensible choice.";
   if (r.captured && VAL[r.captured.toUpperCase()] >= 300)
     why = `Nice — you won material by taking the ${PIECE_NAME[r.captured.toUpperCase()]}.`;
-  return { grade: "good", html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — 👍 Good move</span>${why}` };
+  return { grade: "good", marks: [],
+           html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — 👍 Good move</span>${why}` };
 }
 
 function startReview() {
@@ -1111,7 +1130,7 @@ function startReview() {
   const humanSide = humanColor;
   const s = newState();
   reviewSteps = [{
-    board: s.board.slice(), from: -1, to: -1, stm: s.turn, grade: null,
+    board: s.board.slice(), from: -1, to: -1, stm: s.turn, grade: null, marks: [],
     html: `<span class="rv-move">Starting position</span>Press <b>Next ▶</b> to walk through the game — I'll explain each of your moves.`,
   }];
   const stats = { count: 0, blunder: 0, mistake: 0, inacc: 0, lossSum: 0, worst: null };
@@ -1142,16 +1161,18 @@ function startReview() {
       if (grade && (!stats.worst || (allowedMate ? 1e9 : loss) > (stats.worst.allowedMate ? 1e9 : stats.worst.loss)))
         stats.worst = r;
       const c = moveComment(r, grade);
-      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: c.grade, html: c.html });
+      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: c.grade, html: c.html, marks: c.marks || [] });
     } else {
       makeMove(s, mv);
       const compColor = humanSide === "w" ? "b" : "w";
       const free = findUndefended(s.board, compColor);
+      const giveaway = free && free.v >= 300;
       let html = `<span class="rv-move">Move ${moveNum}. Computer played ${mv.nota}</span>`;
-      html += (free && free.v >= 300)
-        ? `💡 It left its ${PIECE_NAME[free.p.toUpperCase()]} on ${sqName(free.sq)} undefended — that was a chance for you.`
+      html += giveaway
+        ? `💡 It left its ${PIECE_NAME[free.p.toUpperCase()]} undefended on the square marked green — that was a chance for you.`
         : `The computer replies.`;
-      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: null, html });
+      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: null, html,
+                         marks: giveaway ? [{ sq: free.sq, kind: "good" }] : [] });
     }
     i++;
     reviewProgress.textContent = `Analysing… move ${Math.ceil(i / 2)} of ${Math.ceil(moves.length / 2)}`;
@@ -1609,6 +1630,8 @@ function render() {
   const inCheckNow = attacked(board, kingSq(board, stm), stm === "w" ? "b" : "w");
   const checkedKing = (reviewing || !gameOver || /Checkmate/.test(gameOver.result)) && inCheckNow
     ? kingSq(board, stm) : -1;
+  const markMap = {};
+  if (reviewing) for (const mk of (reviewSteps[reviewIdx].marks || [])) markMap[mk.sq] = mk.kind;
 
   boardEl.innerHTML = "";
   for (let row = 0; row < 8; row++) {
@@ -1621,6 +1644,7 @@ function render() {
       if (last && (sq === last.from || sq === last.to)) cell.classList.add("lastmove");
       if (sq === selected) cell.classList.add("selected");
       if (sq === checkedKing) cell.classList.add("incheck");
+      if (markMap[sq]) cell.classList.add("mk-" + markMap[sq]);
 
       const p = board[sq];
       if (p) {
