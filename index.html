@@ -124,6 +124,29 @@
   }
   .promo-box button:hover { background: #fff; }
 
+  .end-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 11; border-radius: 6px;
+    animation: fade 0.3s ease;
+  }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .end-box {
+    background: var(--panel);
+    border-radius: 14px;
+    padding: 28px 32px;
+    text-align: center;
+    box-shadow: 0 14px 44px rgba(0,0,0,0.65);
+    max-width: 80%;
+    animation: pop 0.35s cubic-bezier(0.2, 1.4, 0.5, 1);
+  }
+  @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .end-emoji { font-size: 52px; line-height: 1; margin-bottom: 10px; }
+  .end-title { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+  .end-sub { font-size: 14px; color: var(--muted); margin-bottom: 18px; }
+  .end-box .btn { width: auto; padding: 11px 22px; }
+
   .panel {
     background: var(--panel);
     border-radius: 12px;
@@ -199,6 +222,14 @@
       <div class="board" id="board"></div>
       <div class="promo-overlay" id="promoOverlay" style="display:none">
         <div class="promo-box" id="promoBox"></div>
+      </div>
+      <div class="end-overlay" id="endOverlay" style="display:none">
+        <div class="end-box">
+          <div class="end-emoji" id="endEmoji">🎉</div>
+          <div class="end-title" id="endTitle">Well done!</div>
+          <div class="end-sub" id="endSub"></div>
+          <button class="btn primary" id="endNewGame">Play New Game</button>
+        </div>
       </div>
     </div>
   </div>
@@ -691,6 +722,10 @@ const promoOverlay = document.getElementById("promoOverlay");
 const promoBox = document.getElementById("promoBox");
 const capByHumanEl = document.getElementById("capByHuman");
 const capByAiEl = document.getElementById("capByAi");
+const endOverlay = document.getElementById("endOverlay");
+const endEmoji = document.getElementById("endEmoji");
+const endTitle = document.getElementById("endTitle");
+const endSub = document.getElementById("endSub");
 
 let st, history, repMap, gameOver, selected, legalForSelected, humanColor, thinking, pendingPromo;
 
@@ -712,8 +747,26 @@ function resetGame() {
   pendingPromo = null;
   humanColor = sideEl.value;
   promoOverlay.style.display = "none";
+  endOverlay.style.display = "none";
   render();
   maybeAiTurn();
+}
+
+function showEndOverlay() {
+  let emoji, title, sub;
+  if (gameOver.winnerColor) {
+    if (gameOver.winnerColor === humanColor) {
+      emoji = "🎉"; title = "Well done!"; sub = "You won by checkmate.";
+    } else {
+      emoji = "😔"; title = "Checkmate"; sub = "The computer won this one — try again!";
+    }
+  } else {
+    emoji = "🤝"; title = "It's a draw"; sub = gameOver.result.replace(/^Draw\s*[—-]\s*/, "");
+  }
+  endEmoji.textContent = emoji;
+  endTitle.textContent = title;
+  endSub.textContent = sub;
+  endOverlay.style.display = "flex";
 }
 
 function insufficientMaterial(board) {
@@ -728,8 +781,9 @@ function checkGameEnd() {
   const moves = legalMoves(st);
   if (moves.length === 0) {
     if (inCheck(st, st.turn)) {
-      const winner = st.turn === "w" ? "Black" : "White";
-      gameOver = { result: `Checkmate — ${winner} wins!` };
+      const winnerColor = st.turn === "w" ? "b" : "w";
+      const winner = winnerColor === "w" ? "White" : "Black";
+      gameOver = { result: `Checkmate — ${winner} wins!`, winnerColor };
     } else {
       gameOver = { result: "Stalemate — draw." };
     }
@@ -927,6 +981,8 @@ function render() {
   renderStatus();
   renderCaptured();
   renderMoveList();
+  if (gameOver) showEndOverlay();
+  else endOverlay.style.display = "none";
 }
 
 function fitBoard() {
@@ -940,6 +996,7 @@ levelEl.addEventListener("change", () => {
 });
 sideEl.addEventListener("change", resetGame);
 document.getElementById("newgame").addEventListener("click", resetGame);
+document.getElementById("endNewGame").addEventListener("click", resetGame);
 document.getElementById("undo").addEventListener("click", undo);
 window.addEventListener("resize", () => { fitBoard(); });
 
