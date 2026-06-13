@@ -244,6 +244,26 @@
   .heat-bar { width: 140px; height: 10px; border-radius: 5px;
     background: linear-gradient(90deg, hsl(240,70%,50%), hsl(120,70%,48%), hsl(0,75%,52%)); }
   .heat-caption { font-size: 13px; color: var(--text); line-height: 1.45; margin-bottom: 14px; min-height: 20px; }
+  .heat-main { display: flex; gap: 16px; align-items: stretch; justify-content: center; flex-wrap: wrap; }
+  .heat-left { display: flex; flex-direction: column; }
+  /* Frosted-glass statistics panel beside the grid */
+  .heat-stats {
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px; padding: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+    min-width: 168px; text-align: left;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3);
+  }
+  .hs-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .hs-box {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9px; padding: 8px 11px;
+  }
+  .hs-label { display: block; font-size: 11px; color: var(--muted); line-height: 1.3; }
+  .hs-val { display: block; font-size: 21px; font-weight: 800; color: var(--accent); margin-top: 2px; }
 
   .panel {
     background: var(--panel);
@@ -388,9 +408,21 @@
             <button class="btn" id="heatAi">Computer's</button>
             <button class="btn" id="heatPerfect">Perfect game</button>
           </div>
-          <div class="heat-grid" id="heatGrid"></div>
-          <div class="heat-legend"><span>fewer</span><div class="heat-bar"></div><span>more</span></div>
-          <div class="heat-caption" id="heatCaption"></div>
+          <div class="heat-main">
+            <div class="heat-left">
+              <div class="heat-grid" id="heatGrid"></div>
+              <div class="heat-legend"><span>fewer</span><div class="heat-bar"></div><span>more</span></div>
+              <div class="heat-caption" id="heatCaption"></div>
+            </div>
+            <div class="heat-stats">
+              <div class="hs-title">📊 Statistics</div>
+              <div class="hs-box"><span class="hs-label">Avg. time per move</span><span class="hs-val" id="hsSpeed">–</span></div>
+              <div class="hs-box"><span class="hs-label">Moves in the last 5s</span><span class="hs-val" id="hsPressure">–</span></div>
+              <div class="hs-box"><span class="hs-label">Accuracy</span><span class="hs-val" id="hsAcc">–</span></div>
+              <div class="hs-box"><span class="hs-label">Mistakes</span><span class="hs-val" id="hsMist">–</span></div>
+              <div class="hs-box"><span class="hs-label">Good moves</span><span class="hs-val" id="hsGood">–</span></div>
+            </div>
+          </div>
           <button class="btn primary" id="heatClose">Close</button>
         </div>
       </div>
@@ -1058,6 +1090,8 @@ function resetGame() {
   reviewAbort = true;
   reviewMode = false;
   reviewSteps = [];
+  moveTimes = [];
+  pressureCount = 0;
   render();
   maybeAiTurn();
 }
@@ -1159,7 +1193,7 @@ function startReview() {
     board: s.board.slice(), from: -1, to: -1, stm: s.turn, grade: null, marks: [],
     html: `<span class="rv-move">Starting position</span>Press <b>Next ▶</b> to walk through the game — I'll explain each of your moves.`,
   }];
-  const stats = { count: 0, blunder: 0, mistake: 0, inacc: 0, lossSum: 0, worst: null };
+  const stats = { count: 0, blunder: 0, mistake: 0, inacc: 0, good: 0, lossSum: 0, worst: null };
   let i = 0;
 
   function step() {
@@ -1184,6 +1218,7 @@ function startReview() {
       if (grade === "blunder") stats.blunder++;
       else if (grade === "mistake") stats.mistake++;
       else if (grade === "inacc") stats.inacc++;
+      else stats.good++;
       if (grade && (!stats.worst || (allowedMate ? 1e9 : loss) > (stats.worst.allowedMate ? 1e9 : stats.worst.loss)))
         stats.worst = r;
       const c = moveComment(r, grade);
@@ -1221,6 +1256,13 @@ function finishReview(stats) {
   reviewSteps = [intro, ...key];
 
   const acc = stats.count ? Math.max(25, Math.min(99, Math.round(100 - (stats.lossSum / stats.count) / 9))) : 100;
+  reviewStats = {
+    accuracy: acc,
+    mistakes: stats.blunder + stats.mistake,
+    good: stats.good,
+    avgTime: moveTimes.length ? moveTimes.reduce((a, b) => a + b, 0) / moveTimes.length : 0,
+    pressureCount: pressureCount,
+  };
   let summary = `<b>${acc}% accuracy</b> across your ${stats.count} moves — `
     + `${stats.blunder} blunder${stats.blunder === 1 ? "" : "s"}, `
     + `${stats.mistake} mistake${stats.mistake === 1 ? "" : "s"}, `
@@ -1252,6 +1294,7 @@ function showReviewStep() {
 /* ---- Capture heatmaps ---- */
 let perfectMap = null;       // cached engine-vs-engine capture map
 let heatView = "you";
+let reviewStats = null;      // summary numbers for the heatmap statistics panel
 
 // The square a capture "happened" on (the captured piece's square).
 function captureSquare(m) {
@@ -1340,8 +1383,18 @@ function setHeatView(view) {
   }
 }
 
+function renderHeatStats() {
+  const s = reviewStats || {};
+  document.getElementById("hsSpeed").textContent = s.avgTime != null ? s.avgTime.toFixed(1) + "s" : "–";
+  document.getElementById("hsPressure").textContent = s.pressureCount != null ? s.pressureCount : "–";
+  document.getElementById("hsAcc").textContent = s.accuracy != null ? s.accuracy + "%" : "–";
+  document.getElementById("hsMist").textContent = s.mistakes != null ? s.mistakes : "–";
+  document.getElementById("hsGood").textContent = s.good != null ? s.good : "–";
+}
+
 function openHeatmap() {
   heatOverlay.style.display = "flex";
+  renderHeatStats();
   setHeatView("you");
 }
 
@@ -1437,6 +1490,11 @@ function checkGameEnd() {
 }
 
 function playMove(m) {
+  // Record your move timing (for the review statistics).
+  if (st.turn === humanColor && timerRunning) {
+    moveTimes.push(MOVE_TIME - timeLeft);
+    if (timeLeft <= 5) pressureCount++;
+  }
   let nota = moveNotation(m);
   makeMove(st, m);
   const key = repKey(st);
@@ -1476,6 +1534,7 @@ function undo() {
 /* ---- Move timer: you have MOVE_TIME seconds per turn or you lose ---- */
 const MOVE_TIME = 20;
 let timerId = null, timerRunning = false, timeLeft = 0;
+let moveTimes = [], pressureCount = 0;   // per-game timing stats for the review
 
 function updateTimerUI() {
   timerBar.style.width = Math.max(0, (timeLeft / MOVE_TIME) * 100) + "%";
