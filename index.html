@@ -728,23 +728,38 @@ function negamax(st, depth, alpha, beta, ply, useQ) {
 // `time` is each level's calculation budget AND its minimum visible thinking
 // time, so the move never appears before the computer has "finished" it.
 // It ramps from a snappy 0.3s on Level 1 up to the full 1.5s on Level 5.
-// `blunder` is the chance per move of just playing a random legal move, which
-// makes the easy levels regularly give pieces away so a beginner can win.
+// Each level slowly gets harder *within a game*: it starts at the "0" settings
+// and ramps to the "1" settings over `ramp` plies (half-moves). `blunder` is the
+// chance of just playing a random move (so easy levels give pieces away), which
+// shrinks as the game goes on; search depth grows; score noise fades.
 const LEVELS = [
-  { depth: 1, noise: 200, blunder: 0.45, q: false, time: 300,
-    info: "Calculates for ~0.3s and blunders often — gives pieces away regularly. Great for learning and your first wins." },
-  { depth: 2, noise: 110, blunder: 0.20, q: false, time: 600,
-    info: "Calculates for ~0.6s, two moves ahead, and makes frequent mistakes. A beatable, relaxed game." },
-  { depth: 3, noise: 25,  blunder: 0,    q: true,  time: 900,
-    info: "Calculates for ~0.9s. Solid tactical play that punishes hanging pieces." },
-  { depth: 4, noise: 0,   blunder: 0,    q: true,  time: 1200,
-    info: "Calculates for ~1.2s with strong tactics and planning. Hard to beat." },
-  { depth: 5, noise: 0,   blunder: 0,    q: true,  time: 1500,
-    info: "Calculates for the full 1.5s with deep search. Bring your best game." },
+  { depth0: 1, depth1: 2, noise0: 260, noise1: 150, blunder0: 0.60, blunder1: 0.30, ramp: 40, q: false, time: 300,
+    info: "Beginner — starts very gentle and slowly firms up. Blunders a lot; great for your first wins." },
+  { depth0: 1, depth1: 3, noise0: 170, noise1: 70,  blunder0: 0.35, blunder1: 0.10, ramp: 40, q: false, time: 600,
+    info: "Casual — eases you in, then slowly gets sharper as the game goes on. Beatable." },
+  { depth0: 2, depth1: 3, noise0: 60,  noise1: 10,  blunder0: 0.05, blunder1: 0,    ramp: 30, q: true,  time: 900,
+    info: "Intermediate — relaxed opening that tightens into solid tactical play." },
+  { depth0: 2, depth1: 4, noise0: 25,  noise1: 0,   blunder0: 0,    blunder1: 0,    ramp: 24, q: true,  time: 1200,
+    info: "Advanced — warms up, then plays strong tactics and planning. Hard to beat." },
+  { depth0: 3, depth1: 5, noise0: 10,  noise1: 0,   blunder0: 0,    blunder1: 0,    ramp: 20, q: true,  time: 1500,
+    info: "Master — starts measured and builds to deep 1.5s calculation. Bring your best." },
 ];
 
-function chooseAiMove(st, levelIdx) {
-  const cfg = LEVELS[levelIdx];
+// Effective (ramped) settings for a level given how many plies have been played.
+function levelConfig(levelIdx, ply) {
+  const c = LEVELS[levelIdx];
+  const t = Math.min(1, Math.max(0, (ply || 0) / c.ramp)); // 0 at start -> 1 once warmed up
+  const lerp = (a, b) => a + (b - a) * t;
+  return {
+    depth: Math.max(1, Math.round(lerp(c.depth0, c.depth1))),
+    noise: lerp(c.noise0, c.noise1),
+    blunder: lerp(c.blunder0, c.blunder1),
+    q: c.q, time: c.time,
+  };
+}
+
+function chooseAiMove(st, levelIdx, ply) {
+  const cfg = levelConfig(levelIdx, ply);
   const moves = legalMoves(st);
   if (moves.length === 0) return null;
   // Easy levels sometimes just play a random move, so they give pieces away
@@ -972,9 +987,10 @@ function maybeAiTurn() {
   thinking = true;
   renderStatus();
   const start = Date.now();
+  const ply = history.length;
   // Let the thinking indicator paint before the (blocking) search begins.
   setTimeout(() => {
-    const m = chooseAiMove(st, levelIdx);
+    const m = chooseAiMove(st, levelIdx, ply);
     // Pad to the level's thinking time so weaker levels move quickly and
     // stronger levels visibly take their full calculation budget.
     const wait = Math.max(0, minThink - (Date.now() - start));
