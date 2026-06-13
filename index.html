@@ -54,6 +54,10 @@
   .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
 
   .board-wrap { position: relative; }
+  .review-arrow {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 4;
+  }
   .board {
     display: grid;
     grid-template-columns: repeat(8, var(--sq, 64px));
@@ -345,6 +349,7 @@
     <div class="subtitle">Play against the computer — pick your level</div>
     <div class="board-wrap">
       <div class="board" id="board"></div>
+      <svg class="review-arrow" id="reviewArrow" viewBox="0 0 8 8" preserveAspectRatio="none" style="display:none"></svg>
       <div class="promo-overlay" id="promoOverlay" style="display:none">
         <div class="promo-box" id="promoBox"></div>
       </div>
@@ -1110,7 +1115,7 @@ function moveComment(r, grade) {
     const reason = reviewReason(r);
     const label = grade === "blunder" ? "❌ Blunder" : grade === "mistake" ? "⚠️ Mistake" : "🤔 Inaccuracy";
     return { grade, marks: reason.marks, influence: r.allowedMate ? 1e6 : r.loss,
-             html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — ${label}</span>${reason.detail}<span class="rv-fix">${reason.fix}</span>` };
+             html: `<span class="rv-move">Move ${r.moveNum}. Your move (shown by the arrow) — ${label}</span>${reason.detail}<span class="rv-fix">${reason.fix}</span>` };
   }
   // Good move — only treat it as influential if it won a piece for free.
   let why = "A safe, sensible choice.";
@@ -1122,7 +1127,7 @@ function moveComment(r, grade) {
     if (wonFree) { marks = [{ sq: r.captureSq, kind: "good" }]; influence = VAL[r.captured.toUpperCase()]; }
   }
   return { grade: "good", marks, influence,
-           html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — 👍 Good move</span>${why}` };
+           html: `<span class="rv-move">Move ${r.moveNum}. Your move (shown by the arrow) — 👍 Good move</span>${why}` };
 }
 
 function startReview() {
@@ -1173,7 +1178,7 @@ function startReview() {
       const compColor = humanSide === "w" ? "b" : "w";
       const free = findUndefended(s.board, compColor);
       const giveaway = free && free.v >= 300;
-      let html = `<span class="rv-move">Move ${moveNum}. Computer played ${mv.nota}</span>`;
+      let html = `<span class="rv-move">Move ${moveNum}. Computer's move (shown by the arrow)</span>`;
       html += giveaway
         ? `💡 It left its ${PIECE_NAME[free.p.toUpperCase()]} undefended on the square marked green — that was a chance for you.`
         : `The computer replies.`;
@@ -1700,6 +1705,29 @@ function render() {
       boardEl.appendChild(cell);
     }
   }
+
+  // Draw an arrow for the move under review instead of writing its coordinates.
+  const arrowEl = document.getElementById("reviewArrow");
+  if (reviewing && last && last.from >= 0 && last.to >= 0) {
+    const center = s2 => {
+      const row = s2 >> 3, col = s2 & 7;
+      return { x: (flip ? 7 - col : col) + 0.5, y: (flip ? 7 - row : row) + 0.5 };
+    };
+    const a = center(last.from), b = center(last.to);
+    // pull the arrow tip back a little so it doesn't bury the piece
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+    const tipX = b.x - (dx / len) * 0.18, tipY = b.y - (dy / len) * 0.18;
+    arrowEl.innerHTML =
+      `<defs><marker id="rvhead" markerUnits="userSpaceOnUse" markerWidth="0.55" markerHeight="0.55" refX="0.27" refY="0.27" orient="auto">` +
+      `<path d="M0,0 L0.55,0.27 L0,0.55 Z" fill="#f6c945"/></marker></defs>` +
+      `<line x1="${a.x}" y1="${a.y}" x2="${tipX}" y2="${tipY}" stroke="#f6c945" stroke-width="0.16" ` +
+      `stroke-linecap="round" marker-end="url(#rvhead)" opacity="0.92"/>`;
+    arrowEl.style.display = "block";
+  } else {
+    arrowEl.style.display = "none";
+    arrowEl.innerHTML = "";
+  }
+
   renderStatus();
   renderTip();
   renderCaptured();
