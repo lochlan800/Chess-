@@ -187,6 +187,19 @@
   .status.thinking { color: var(--accent); }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  .tipbox { background: rgba(0,0,0,0.25); border-radius: 8px; padding: 10px 12px; }
+  .tip-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .tip-head span { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: 0.3px; }
+  .tip-btn {
+    font-size: 11px; color: var(--accent); background: none; border: none;
+    cursor: pointer; padding: 2px 4px; border-radius: 4px;
+  }
+  .tip-btn:hover { background: rgba(122,162,247,0.15); }
+  .tip { font-size: 13px; line-height: 1.45; }
+  .tip.warn { color: #ffb4a2; }
+  .tip.good { color: #b8e994; }
+  .tip.info { color: var(--text); }
+
   /* While the computer thinks, ring the board and block input. */
   .board.thinking {
     cursor: progress;
@@ -263,6 +276,14 @@
 
   <div class="panel">
     <div class="status" id="status"></div>
+
+    <div class="tipbox">
+      <div class="tip-head">
+        <span>💡 Coach tips</span>
+        <button class="tip-btn" id="newtip" title="Show another tip">New tip ↻</button>
+      </div>
+      <div class="tip info" id="tip"></div>
+    </div>
 
     <div>
       <label for="level">Difficulty</label>
@@ -792,6 +813,7 @@ const promoOverlay = document.getElementById("promoOverlay");
 const promoBox = document.getElementById("promoBox");
 const capByHumanEl = document.getElementById("capByHuman");
 const capByAiEl = document.getElementById("capByAi");
+const tipEl = document.getElementById("tip");
 const endOverlay = document.getElementById("endOverlay");
 const endEmoji = document.getElementById("endEmoji");
 const endTitle = document.getElementById("endTitle");
@@ -1002,6 +1024,84 @@ function showPromoPicker(candidates) {
   promoOverlay.style.display = "flex";
 }
 
+/* ---- Coach: general strategy tips + live position-aware advice ---- */
+const PIECE_NAME = { P: "pawn", N: "knight", B: "bishop", R: "rook", Q: "queen", K: "king" };
+const GENERAL_TIPS = [
+  "Control the centre early — pawns on e4/d4 (or e5/d5) and pieces aimed at the middle give you more space.",
+  "Develop a new piece every move in the opening: knights and bishops first, before moving the same piece twice.",
+  "Castle early to tuck your king into the corner and bring a rook into the game.",
+  "Before every move, ask: \"Is any of my pieces under attack?\" Don't leave pieces hanging for free.",
+  "Before you move, check what the computer's last move is threatening — what is it attacking?",
+  "Knights are strong in the centre and weak in corners — \"a knight on the rim is dim.\"",
+  "Trade pieces when you're ahead in material; avoid trades when you're behind.",
+  "Look for undefended enemy pieces — winning a free knight or bishop often decides the game.",
+  "Don't bring your queen out too early; it can get chased around and lose you time.",
+  "Connect and double your rooks on open files (columns with no pawns).",
+  "Count the attackers and defenders of a square before capturing on it.",
+  "In the endgame, push your passed pawns and march your king toward the action.",
+  "If you spot a good move, look for a better one — and always check it's safe first.",
+  "Use the Undo button to take back a blunder and learn from it, then try a safer move.",
+];
+let tipIndex = Math.floor(Math.random() * GENERAL_TIPS.length);
+
+// Most valuable piece of `color` that an enemy attacks and `color` does not defend.
+function findUndefended(board, color) {
+  const opp = color === "w" ? "b" : "w";
+  let best = null, bestVal = -1;
+  for (let sq = 0; sq < 64; sq++) {
+    const p = board[sq];
+    if (!p || colorOf(p) !== color || p.toUpperCase() === "K") continue;
+    if (attacked(board, sq, opp) && !attacked(board, sq, color)) {
+      const v = VAL[p.toUpperCase()];
+      if (v > bestVal) { bestVal = v; best = { sq, p, v }; }
+    }
+  }
+  return best;
+}
+
+// Live advice for the human to move; returns {t, k} or null.
+function coachTip() {
+  if (gameOver || thinking || st.turn !== humanColor) return null;
+  const oppColor = humanColor === "w" ? "b" : "w";
+
+  if (inCheck(st, humanColor))
+    return { t: "You're in check! You must respond: move your king to safety, block the check, or capture the attacker.", k: "warn" };
+
+  const danger = findUndefended(st.board, humanColor);
+  if (danger && danger.v >= 300)
+    return { t: `Careful — your ${PIECE_NAME[danger.p.toUpperCase()]} on ${sqName(danger.sq)} is undefended and under attack. Defend it or move it to safety.`, k: "warn" };
+
+  const free = findUndefended(st.board, oppColor);
+  if (free && free.v >= 300)
+    return { t: `Opportunity: the computer's ${PIECE_NAME[free.p.toUpperCase()]} on ${sqName(free.sq)} is undefended. Can you win it for free?`, k: "good" };
+
+  const moves = legalMoves(st);
+  if (moves.some(m => m.flag === "castleK" || m.flag === "castleQ"))
+    return { t: "Tip: castle now to get your king safe and activate a rook.", k: "info" };
+
+  const homeRow = humanColor === "w" ? 7 : 0;
+  let undeveloped = 0;
+  for (let c = 0; c < 8; c++) {
+    const p = st.board[homeRow * 8 + c];
+    if (p && colorOf(p) === humanColor && (p.toUpperCase() === "N" || p.toUpperCase() === "B")) undeveloped++;
+  }
+  if (history.length < 24 && undeveloped >= 2)
+    return { t: "Opening tip: develop your knights and bishops toward the centre and fight for the squares d4, d5, e4 and e5.", k: "info" };
+
+  return null; // fall back to a rotating general tip
+}
+
+function renderTip() {
+  const c = coachTip();
+  if (c) {
+    tipEl.className = "tip " + c.k;
+    tipEl.textContent = c.t;
+  } else {
+    tipEl.className = "tip info";
+    tipEl.textContent = GENERAL_TIPS[tipIndex % GENERAL_TIPS.length];
+  }
+}
+
 function renderStatus() {
   statusEl.classList.toggle("thinking", thinking && !gameOver);
   boardEl.classList.toggle("thinking", thinking && !gameOver);
@@ -1101,6 +1201,7 @@ function render() {
     }
   }
   renderStatus();
+  renderTip();
   renderCaptured();
   renderMoveList();
   if (gameOver) showEndOverlay();
@@ -1120,6 +1221,10 @@ soundBtn.addEventListener("click", () => {
   soundBtn.textContent = soundOn ? "🔊" : "🔇";
   soundBtn.setAttribute("aria-pressed", String(soundOn));
   if (soundOn) playMoveSound(false, false); // little confirmation blip
+});
+document.getElementById("newtip").addEventListener("click", () => {
+  tipIndex = (tipIndex + 1) % GENERAL_TIPS.length;
+  renderTip();
 });
 
 levelInfoEl.textContent = LEVELS[parseInt(levelEl.value, 10)].info;
