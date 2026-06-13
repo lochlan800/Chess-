@@ -728,16 +728,18 @@ function negamax(st, depth, alpha, beta, ply, useQ) {
 // `time` is each level's calculation budget AND its minimum visible thinking
 // time, so the move never appears before the computer has "finished" it.
 // It ramps from a snappy 0.3s on Level 1 up to the full 1.5s on Level 5.
+// `blunder` is the chance per move of just playing a random legal move, which
+// makes the easy levels regularly give pieces away so a beginner can win.
 const LEVELS = [
-  { depth: 1, noise: 160, q: false, time: 300,
-    info: "Calculates for ~0.3s, one move ahead, and makes plenty of mistakes. Great for learning." },
-  { depth: 2, noise: 70,  q: false, time: 600,
-    info: "Calculates for ~0.6s, two moves ahead, with occasional slips. A relaxed game." },
-  { depth: 3, noise: 25,  q: true,  time: 900,
+  { depth: 1, noise: 200, blunder: 0.45, q: false, time: 300,
+    info: "Calculates for ~0.3s and blunders often — gives pieces away regularly. Great for learning and your first wins." },
+  { depth: 2, noise: 110, blunder: 0.20, q: false, time: 600,
+    info: "Calculates for ~0.6s, two moves ahead, and makes frequent mistakes. A beatable, relaxed game." },
+  { depth: 3, noise: 25,  blunder: 0,    q: true,  time: 900,
     info: "Calculates for ~0.9s. Solid tactical play that punishes hanging pieces." },
-  { depth: 4, noise: 0,   q: true,  time: 1200,
+  { depth: 4, noise: 0,   blunder: 0,    q: true,  time: 1200,
     info: "Calculates for ~1.2s with strong tactics and planning. Hard to beat." },
-  { depth: 5, noise: 0,   q: true,  time: 1500,
+  { depth: 5, noise: 0,   blunder: 0,    q: true,  time: 1500,
     info: "Calculates for the full 1.5s with deep search. Bring your best game." },
 ];
 
@@ -745,6 +747,11 @@ function chooseAiMove(st, levelIdx) {
   const cfg = LEVELS[levelIdx];
   const moves = legalMoves(st);
   if (moves.length === 0) return null;
+  // Easy levels sometimes just play a random move, so they give pieces away
+  // and stay beatable for beginners. Never blunder when there's only one move.
+  if (cfg.blunder && moves.length > 1 && Math.random() < cfg.blunder) {
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
   // shuffle so equal-scoring moves vary game to game
   for (let i = moves.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
