@@ -202,6 +202,8 @@
   button.btn.primary:hover { filter: brightness(1.1); }
   .btn-row { display: flex; gap: 8px; }
   .btn-row .btn { flex: 1; }
+  #sound { flex: 0 0 46px; font-size: 16px; }
+  #sound[aria-pressed="false"] { opacity: 0.5; }
 
   .captured {
     font-size: 22px; min-height: 28px; line-height: 1.2;
@@ -272,6 +274,7 @@
     <div class="btn-row">
       <button class="btn primary" id="newgame">New Game</button>
       <button class="btn" id="undo">Undo</button>
+      <button class="btn" id="sound" title="Toggle move sounds" aria-pressed="true">🔊</button>
     </div>
 
     <div class="captured">
@@ -579,7 +582,9 @@ function legalMoves(st) {
 
 /* ========================= Engine: evaluation & search ========================= */
 
-function evaluate(board) { // from white's perspective, centipawns
+/* Hand-crafted fallback evaluation (material + piece-square tables), used only
+   if the neural network fails to load. From white's perspective, centipawns. */
+function pstEvaluate(board) {
   let s = 0;
   for (let sq = 0; sq < 64; sq++) {
     const p = board[sq];
@@ -589,6 +594,41 @@ function evaluate(board) { // from white's perspective, centipawns
     else s -= VAL[up] + PST[up][mirror(sq)];
   }
   return s;
+}
+
+/* Neural network evaluation. A small trained multi-layer perceptron
+   (768 piece-on-square inputs -> hidden ReLU layer -> 1 score) whose weights
+   were learned offline by distilling a shallow search of the engine above.
+   The hidden accumulator is recomputed from the (sparse) active pieces, so a
+   full evaluation is only ~pieces x hiddenUnits multiply-adds. */
+const NN_PIECE_IDX = { P:0, N:1, B:2, R:3, Q:4, K:5, p:6, n:7, b:8, r:9, q:10, k:11 };
+let NN = null;
+function buildNN(w) {
+  const raw = atob(w.w1);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  const q1 = new Int16Array(bytes.buffer);
+  const w1 = new Float32Array(q1.length);
+  for (let i = 0; i < q1.length; i++) w1[i] = q1[i] * w.w1scale;
+  return { H: w.H, scale: w.scale, w1,
+           b1: Float32Array.from(w.b1), w2: Float32Array.from(w.w2), b2: w.b2,
+           acc: new Float32Array(w.H) };
+}
+function nnEvaluate(board) { // from white's perspective, centipawns
+  const H = NN.H, w1 = NN.w1, b1 = NN.b1, w2 = NN.w2, acc = NN.acc;
+  for (let h = 0; h < H; h++) acc[h] = b1[h];
+  for (let sq = 0; sq < 64; sq++) {
+    const p = board[sq];
+    if (!p) continue;
+    const base = (NN_PIECE_IDX[p] * 64 + sq) * H;
+    for (let h = 0; h < H; h++) acc[h] += w1[base + h];
+  }
+  let out = NN.b2;
+  for (let h = 0; h < H; h++) { const v = acc[h]; if (v > 0) out += v * w2[h]; }
+  return out * NN.scale;
+}
+function evaluate(board) {
+  return NN ? nnEvaluate(board) : pstEvaluate(board);
 }
 
 function evalSide(st) {
@@ -744,6 +784,39 @@ const endSub = document.getElementById("endSub");
 
 let st, history, repMap, gameOver, selected, legalForSelected, humanColor, thinking, pendingPromo;
 
+/* ---- Move sounds (synthesized with Web Audio, no asset files) ---- */
+let soundOn = true;
+let audioCtx = null;
+function playMoveSound(isCapture, isCheck) {
+  if (!soundOn) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const ctx = audioCtx, now = ctx.currentTime;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    // A short wooden "click" — captures are lower/heavier, checks add a chirp.
+    o.type = "triangle";
+    const f0 = isCapture ? 200 : 340;
+    o.frequency.setValueAtTime(f0, now);
+    o.frequency.exponentialRampToValueAtTime(f0 * 0.5, now + 0.05);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(isCapture ? 0.38 : 0.28, now + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+    o.connect(g).connect(ctx.destination);
+    o.start(now); o.stop(now + 0.14);
+    if (isCheck) {
+      const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+      o2.type = "sine";
+      o2.frequency.setValueAtTime(880, now + 0.06);
+      g2.gain.setValueAtTime(0.0001, now + 0.06);
+      g2.gain.exponentialRampToValueAtTime(0.2, now + 0.07);
+      g2.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+      o2.connect(g2).connect(ctx.destination);
+      o2.start(now + 0.06); o2.stop(now + 0.21);
+    }
+  } catch (e) { /* audio unavailable — ignore */ }
+}
+
 function repKey(s) {
   return s.board.map(p => p || ".").join("") + s.turn +
     (s.castle.K ? "K" : "") + (s.castle.Q ? "Q" : "") + (s.castle.k ? "k" : "") + (s.castle.q ? "q" : "") +
@@ -816,11 +889,13 @@ function playMove(m) {
   repMap[key] = (repMap[key] || 0) + 1;
   m.repKey = key;
   checkGameEnd();
-  if (inCheck(st, st.turn)) nota += gameOver ? "#" : "+";
+  const checking = inCheck(st, st.turn);
+  if (checking) nota += gameOver ? "#" : "+";
   m.nota = nota;
   history.push(m);
   selected = -1;
   legalForSelected = [];
+  playMoveSound(!!m.capture, checking);
   render();
 }
 
@@ -1024,6 +1099,13 @@ sideEl.addEventListener("change", resetGame);
 document.getElementById("newgame").addEventListener("click", resetGame);
 document.getElementById("endNewGame").addEventListener("click", resetGame);
 document.getElementById("undo").addEventListener("click", undo);
+const soundBtn = document.getElementById("sound");
+soundBtn.addEventListener("click", () => {
+  soundOn = !soundOn;
+  soundBtn.textContent = soundOn ? "🔊" : "🔇";
+  soundBtn.setAttribute("aria-pressed", String(soundOn));
+  if (soundOn) playMoveSound(false, false); // little confirmation blip
+});
 window.addEventListener("resize", () => { fitBoard(); });
 
 levelInfoEl.textContent = LEVELS[parseInt(levelEl.value, 10)].info;
