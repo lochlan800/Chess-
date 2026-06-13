@@ -276,6 +276,13 @@
   .status.thinking { color: var(--accent); }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  .timer { display: flex; align-items: center; gap: 10px; }
+  .timer-track { flex: 1; height: 10px; background: rgba(0,0,0,0.3); border-radius: 5px; overflow: hidden; }
+  .timer-bar { height: 100%; width: 100%; background: var(--accent); border-radius: 5px; transition: width 0.1s linear; }
+  .timer-text { font-size: 13px; font-weight: 700; color: var(--muted); min-width: 42px; text-align: right; }
+  .timer.low .timer-bar { background: #ff5e4d; }
+  .timer.low .timer-text { color: #ff8a7a; }
+
   .tipbox { background: rgba(0,0,0,0.25); border-radius: 8px; padding: 10px 12px; }
   .tip-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
   .tip-head span { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: 0.3px; }
@@ -406,6 +413,11 @@
 
   <div class="panel">
     <div class="status" id="status"></div>
+
+    <div class="timer" id="timer" style="display:none">
+      <div class="timer-track"><div class="timer-bar" id="timerBar"></div></div>
+      <span class="timer-text" id="timerText"></span>
+    </div>
 
     <div class="tipbox">
       <div class="tip-head">
@@ -958,6 +970,9 @@ function moveNotation(m) {
 const boardEl = document.getElementById("board");
 const statusEl = document.getElementById("status");
 const movelistEl = document.getElementById("movelist");
+const timerEl = document.getElementById("timer");
+const timerBar = document.getElementById("timerBar");
+const timerText = document.getElementById("timerText");
 const levelEl = document.getElementById("level");
 const levelInfoEl = document.getElementById("levelinfo");
 const sideEl = document.getElementById("side");
@@ -1336,7 +1351,9 @@ function showEndOverlay() {
     if (gameOver.winnerColor === humanColor) {
       emoji = "🎉"; title = "Well done!"; sub = "You won by checkmate.";
     } else {
-      emoji = "😔"; title = "Checkmate"; sub = "The computer won this one — try again!";
+      emoji = gameOver.endTitle ? "⏱" : "😔";
+      title = gameOver.endTitle || "Checkmate";
+      sub = gameOver.endSub || "The computer won this one — try again!";
     }
   } else {
     emoji = "🤝"; title = "It's a draw";
@@ -1441,6 +1458,7 @@ function playMove(m) {
 
 function undo() {
   if (thinking || history.length === 0) return;
+  stopTimer();   // restart the clock fresh for the redone move
   do {
     const m = history.pop();
     repMap[m.repKey]--;
@@ -1453,6 +1471,49 @@ function undo() {
   promoOverlay.style.display = "none";
   render();
   maybeAiTurn(); // covers the case where all moves were undone and AI plays first
+}
+
+/* ---- Move timer: you have MOVE_TIME seconds per turn or you lose ---- */
+const MOVE_TIME = 20;
+let timerId = null, timerRunning = false, timeLeft = 0;
+
+function updateTimerUI() {
+  timerBar.style.width = Math.max(0, (timeLeft / MOVE_TIME) * 100) + "%";
+  timerText.textContent = Math.ceil(timeLeft) + "s";
+  timerEl.classList.toggle("low", timeLeft <= 5);
+}
+function startTimer() {
+  timerRunning = true;
+  timeLeft = MOVE_TIME;
+  updateTimerUI();
+  timerEl.style.display = "flex";
+  timerId = setInterval(() => {
+    timeLeft -= 0.1;
+    if (timeLeft <= 0) { timeLeft = 0; updateTimerUI(); onTimeout(); return; }
+    updateTimerUI();
+  }, 100);
+}
+function stopTimer() {
+  timerRunning = false;
+  if (timerId) { clearInterval(timerId); timerId = null; }
+  timerEl.style.display = "none";
+}
+function syncTimer() {
+  const yourTurn = !gameOver && !thinking && !reviewMode && !pendingPromo && st.turn === humanColor;
+  if (yourTurn) { if (!timerRunning) startTimer(); }
+  else stopTimer();
+}
+function onTimeout() {
+  stopTimer();
+  if (gameOver || st.turn !== humanColor) return;
+  gameOver = {
+    result: "⏱ Time's up — the computer wins!",
+    winnerColor: humanColor === "w" ? "b" : "w",
+    endTitle: "Time's up!",
+    endSub: "You ran out of time — the computer wins. Move within " + MOVE_TIME + " seconds next time!",
+  };
+  playMoveSound(false, true, true);
+  render();
 }
 
 function maybeAiTurn() {
@@ -1732,6 +1793,7 @@ function render() {
   renderTip();
   renderCaptured();
   renderMoveList();
+  syncTimer();
   if (reviewMode) return;             // review bar drives the UI; leave overlays alone
   if (gameOver) showEndOverlay();
   else endOverlay.style.display = "none";
