@@ -1103,19 +1103,25 @@ function reviewReason(r) {
            marks: [] };
 }
 
-// Commentary for one of your moves (graded) or a praising note for a good one.
+// Commentary for one of your moves. Returns an `influence` score so the review
+// can show only the moves that actually mattered.
 function moveComment(r, grade) {
   if (grade) {
     const reason = reviewReason(r);
     const label = grade === "blunder" ? "❌ Blunder" : grade === "mistake" ? "⚠️ Mistake" : "🤔 Inaccuracy";
-    return { grade, marks: reason.marks,
+    return { grade, marks: reason.marks, influence: r.allowedMate ? 1e6 : r.loss,
              html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — ${label}</span>${reason.detail}<span class="rv-fix">${reason.fix}</span>` };
   }
-  const wasBest = r.bestMove && r.bestMove.from === r.playedFrom && r.bestMove.to === r.playedTo;
-  let why = wasBest ? "That's exactly what the engine would play here." : "A safe, sensible choice.";
-  if (r.captured && VAL[r.captured.toUpperCase()] >= 300)
-    why = `Nice — you won material by taking the ${PIECE_NAME[r.captured.toUpperCase()]}.`;
-  return { grade: "good", marks: [],
+  // Good move — only treat it as influential if it won a piece for free.
+  let why = "A safe, sensible choice.";
+  let marks = [], influence = 0;
+  if (r.captured && VAL[r.captured.toUpperCase()] >= 300) {
+    const opp = r.color === "w" ? "b" : "w";
+    const wonFree = attacked(r.beforeBoard, r.captureSq, r.color) && !attacked(r.beforeBoard, r.captureSq, opp);
+    why = `Nice — you won the ${PIECE_NAME[r.captured.toUpperCase()]}${wonFree ? " for free (the square marked green)" : ""}.`;
+    if (wonFree) { marks = [{ sq: r.captureSq, kind: "good" }]; influence = VAL[r.captured.toUpperCase()]; }
+  }
+  return { grade: "good", marks, influence,
            html: `<span class="rv-move">Move ${r.moveNum}. You played ${r.played} — 👍 Good move</span>${why}` };
 }
 
@@ -1152,7 +1158,7 @@ function startReview() {
       makeMove(s, mv);
       const r = { moveNum, color: humanSide, played: mv.nota, bestMove: best.m, loss, allowedMate,
                   beforeBoard, afterBoard: s.board.slice(), captured: mv.capture,
-                  playedFrom: mv.from, playedTo: mv.to };
+                  captureSq: captureSquare(mv), playedFrom: mv.from, playedTo: mv.to };
       const grade = gradeOf(loss, allowedMate);
       stats.count++; stats.lossSum += Math.min(800, loss);
       if (grade === "blunder") stats.blunder++;
@@ -1161,7 +1167,7 @@ function startReview() {
       if (grade && (!stats.worst || (allowedMate ? 1e9 : loss) > (stats.worst.allowedMate ? 1e9 : stats.worst.loss)))
         stats.worst = r;
       const c = moveComment(r, grade);
-      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: c.grade, html: c.html, marks: c.marks || [] });
+      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: c.grade, html: c.html, marks: c.marks || [], influence: c.influence || 0 });
     } else {
       makeMove(s, mv);
       const compColor = humanSide === "w" ? "b" : "w";
@@ -1172,7 +1178,8 @@ function startReview() {
         ? `💡 It left its ${PIECE_NAME[free.p.toUpperCase()]} undefended on the square marked green — that was a chance for you.`
         : `The computer replies.`;
       reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: null, html,
-                         marks: giveaway ? [{ sq: free.sq, kind: "good" }] : [] });
+                         marks: giveaway ? [{ sq: free.sq, kind: "good" }] : [],
+                         influence: giveaway ? free.v : 0 });
     }
     i++;
     reviewProgress.textContent = `Analysing… move ${Math.ceil(i / 2)} of ${Math.ceil(moves.length / 2)}`;
@@ -1182,12 +1189,28 @@ function startReview() {
 }
 
 function finishReview(stats) {
+  // Keep only the influential moments (errors, free pieces won, gifts), and
+  // cap to the most significant so the walkthrough is short, not 100+ steps.
+  const intro = reviewSteps[0];
+  let key = reviewSteps.slice(1).filter(s => s.influence > 0);
+  const MAX_KEY = 16;
+  if (key.length > MAX_KEY) {
+    const keep = new Set(key.slice().sort((a, b) => b.influence - a.influence).slice(0, MAX_KEY));
+    key = key.filter(s => keep.has(s));
+  }
+  reviewSteps = [intro, ...key];
+
   const acc = stats.count ? Math.max(25, Math.min(99, Math.round(100 - (stats.lossSum / stats.count) / 9))) : 100;
   let summary = `<b>${acc}% accuracy</b> across your ${stats.count} moves — `
     + `${stats.blunder} blunder${stats.blunder === 1 ? "" : "s"}, `
     + `${stats.mistake} mistake${stats.mistake === 1 ? "" : "s"}, `
     + `${stats.inacc} inaccurac${stats.inacc === 1 ? "y" : "ies"}. `;
-  summary += stats.worst ? `Biggest lesson: ${reviewReason(stats.worst).fix}` : "Clean game — no real mistakes. Keep it up!";
+  if (key.length) {
+    summary += `Showing the ${key.length} most influential moment${key.length === 1 ? "" : "s"}. `;
+    summary += stats.worst ? `Biggest lesson: ${reviewReason(stats.worst).fix}` : "";
+  } else {
+    intro.html = `<span class="rv-move">Nothing major to review</span>You played a clean game — no big mistakes or missed chances. Nicely done!`;
+  }
   reviewSummary.innerHTML = summary;
   reviewOverlay.style.display = "none";
   reviewMode = true;
@@ -1200,7 +1223,9 @@ function showReviewStep() {
   const stp = reviewSteps[reviewIdx];
   reviewComment.className = "rv-comment" + (stp.grade ? " " + stp.grade : "");
   reviewComment.innerHTML = stp.html;
-  rvCounter.textContent = reviewIdx === 0 ? "Start" : `Move ${reviewIdx} / ${reviewSteps.length - 1}`;
+  rvCounter.textContent = reviewIdx === 0
+    ? (reviewSteps.length > 1 ? "Start" : "—")
+    : `Key ${reviewIdx} / ${reviewSteps.length - 1}`;
   render();
 }
 
