@@ -546,6 +546,16 @@
       </select>
     </div>
 
+    <div>
+      <label for="timerSel">Move timer</label>
+      <select id="timerSel">
+        <option value="0">Off</option>
+        <option value="30">30 seconds</option>
+        <option value="60">1 minute</option>
+        <option value="120" selected>2 minutes</option>
+      </select>
+    </div>
+
     <div class="btn-row">
       <button class="btn primary" id="newgame">New Game</button>
       <button class="btn" id="undo">Undo</button>
@@ -1655,7 +1665,7 @@ function checkGameEnd() {
 function playMove(m) {
   // Record your move timing (for the review statistics).
   if (st.turn === humanColor && timerRunning) {
-    moveTimes.push(MOVE_TIME - timeLeft);
+    moveTimes.push(moveTimeLimit - timeLeft);
     if (timeLeft <= 5) pressureCount++;
   }
   let nota = moveNotation(m);
@@ -1953,19 +1963,24 @@ function reactToMove(m, isComputer, checking) {
   }
 }
 
-/* ---- Move timer: you have MOVE_TIME seconds per turn or you lose ---- */
-const MOVE_TIME = 20;
+/* ---- Move timer: you have moveTimeLimit seconds per turn (0 = off) ---- */
+let moveTimeLimit = 120;                  // seconds per move; 0 turns it off
 let timerId = null, timerRunning = false, timeLeft = 0;
 let moveTimes = [], pressureCount = 0;   // per-game timing stats for the review
 
+function fmtTime(sec) {
+  sec = Math.ceil(sec);
+  return sec >= 60 ? Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0") : sec + "s";
+}
 function updateTimerUI() {
-  timerBar.style.width = Math.max(0, (timeLeft / MOVE_TIME) * 100) + "%";
-  timerText.textContent = Math.ceil(timeLeft) + "s";
-  timerEl.classList.toggle("low", timeLeft <= 5);
+  timerBar.style.width = Math.max(0, (timeLeft / moveTimeLimit) * 100) + "%";
+  timerText.textContent = fmtTime(timeLeft);
+  timerEl.classList.toggle("low", timeLeft <= 10);
 }
 function startTimer() {
+  if (moveTimeLimit <= 0) return;          // timer turned off
   timerRunning = true;
-  timeLeft = MOVE_TIME;
+  timeLeft = moveTimeLimit;
   updateTimerUI();
   timerEl.style.display = "flex";
   timerId = setInterval(() => {
@@ -1980,7 +1995,7 @@ function stopTimer() {
   timerEl.style.display = "none";
 }
 function syncTimer() {
-  const yourTurn = !gameOver && !thinking && !reviewMode && !pendingPromo && st.turn === humanColor;
+  const yourTurn = moveTimeLimit > 0 && !gameOver && !thinking && !reviewMode && !pendingPromo && st.turn === humanColor;
   if (yourTurn) { if (!timerRunning) startTimer(); }
   else stopTimer();
 }
@@ -1991,7 +2006,7 @@ function onTimeout() {
     result: "⏱ Time's up — the computer wins!",
     winnerColor: humanColor === "w" ? "b" : "w",
     endTitle: "Time's up!",
-    endSub: "You ran out of time — the computer wins. Move within " + MOVE_TIME + " seconds next time!",
+    endSub: "You ran out of time — the computer wins. You get " + fmtTime(moveTimeLimit) + " per move.",
   };
   playMoveSound(false, true, true);
   say("win");
@@ -2296,6 +2311,11 @@ levelEl.addEventListener("change", () => {
   levelInfoEl.textContent = LEVELS[parseInt(levelEl.value, 10)].info;
 });
 sideEl.addEventListener("change", resetGame);
+document.getElementById("timerSel").addEventListener("change", (e) => {
+  moveTimeLimit = parseInt(e.target.value, 10);
+  stopTimer();
+  syncTimer();   // start/stop with the new setting on the current turn
+});
 document.getElementById("newgame").addEventListener("click", resetGame);
 document.getElementById("endNewGame").addEventListener("click", resetGame);
 document.getElementById("reviewBtn").addEventListener("click", startReview);
