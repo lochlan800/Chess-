@@ -182,6 +182,56 @@
     animation: pop 0.35s cubic-bezier(0.2, 1.4, 0.5, 1);
   }
   @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  /* ---- Start screen + Beginner tutorial ---- */
+  .full-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: radial-gradient(1000px 700px at 30% 10%, rgba(43,50,69,0.96), rgba(31,36,48,0.98));
+    display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto;
+  }
+  .start-box, .tut-box {
+    background: var(--panel); border-radius: 16px; padding: 26px 28px; text-align: center;
+    box-shadow: 0 14px 44px rgba(0,0,0,0.6); max-width: min(440px, 94vw);
+    animation: pop 0.35s cubic-bezier(0.2, 1.4, 0.5, 1);
+  }
+  .start-emoji { font-size: 54px; line-height: 1; margin-bottom: 6px; }
+  .start-title { font-size: 30px; font-weight: 800; margin-bottom: 4px; }
+  .start-sub { font-size: 14px; color: var(--muted); margin-bottom: 20px; }
+  .start-big { display: block; width: 100%; max-width: 300px; margin: 10px auto; font-size: 16px; padding: 14px; }
+  .tut-step { font-size: 12px; color: var(--accent); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; }
+  .tut-title { font-size: 22px; font-weight: 800; margin: 4px 0 6px; }
+  .tut-text { font-size: 14px; color: var(--text); line-height: 1.5; margin-bottom: 12px; }
+  .tut-board {
+    display: grid; gap: 0; margin: 0 auto 12px; width: fit-content;
+    border-radius: 6px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    --tsq: min(15vw, 62px);
+  }
+  .tut-board .tsq {
+    width: var(--tsq); height: var(--tsq); position: relative;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .tut-board .tsq.light { background: var(--light); }
+  .tut-board .tsq.dark  { background: var(--dark); }
+  .tut-board .tsq.tut-sel::before { content: ""; position: absolute; inset: 0; background: var(--select); }
+  .tut-board .tsq.tut-target::after {
+    content: ""; position: absolute; inset: 8%; border-radius: 50%;
+    border: 3px solid rgba(122,162,247,0.7); animation: markpulse 1s ease-in-out infinite;
+  }
+  .tut-board .tsq .tmark { position: absolute; border-radius: 50%; pointer-events: none; }
+  .tut-board .tsq .tmark.dot { width: 30%; height: 30%; background: rgba(122,162,247,0.6); }
+  .tut-board .tsq .tmark.ring { inset: 7%; border: 4px solid rgba(122,162,247,0.75); }
+  .tut-piece { font-size: calc(var(--tsq) * 0.78); line-height: 1; position: relative; z-index: 1; }
+  .tut-piece.w { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.7), 0 0 1px #000; }
+  .tut-piece.b { color: #1a1a1a; text-shadow: 0 1px 2px rgba(255,255,255,0.25); }
+  .tut-feedback { font-size: 14px; min-height: 22px; line-height: 1.4; margin-bottom: 12px; font-weight: 600; }
+  .tut-feedback.good { color: #7bd88f; }
+  .tut-feedback.warn { color: #ffd479; }
+  .tut-feedback.info { color: var(--muted); font-weight: 400; }
+  .tut-nav { display: flex; gap: 8px; }
+  .tut-nav .btn { flex: 1; }
+  .tut-nav .btn:disabled { opacity: 0.4; cursor: default; }
+  .tut-skip { width: auto; margin-top: 12px; font-size: 12px; color: var(--muted); background: none; border: none; }
+  .tut-skip:hover { color: var(--text); background: none; }
   .end-emoji { font-size: 52px; line-height: 1; margin-bottom: 10px; }
   .end-title { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
   .end-sub { font-size: 14px; color: var(--muted); margin-bottom: 18px; }
@@ -459,6 +509,32 @@
 </style>
 </head>
 <body>
+<div class="full-overlay" id="startOverlay">
+  <div class="start-box">
+    <div class="start-emoji">♞</div>
+    <h1 class="start-title">Chess</h1>
+    <p class="start-sub">New to chess? Learn the pieces first.</p>
+    <button class="btn primary start-big" id="startBeginner">📚 Beginner — learn to play</button>
+    <button class="btn start-big" id="startPlay">▶ Play game</button>
+  </div>
+</div>
+
+<div class="full-overlay" id="tutOverlay" style="display:none">
+  <div class="tut-box">
+    <div class="tut-step" id="tutStep"></div>
+    <h2 class="tut-title" id="tutTitle"></h2>
+    <p class="tut-text" id="tutText"></p>
+    <div class="tut-board" id="tutBoard"></div>
+    <div class="tut-feedback" id="tutFeedback"></div>
+    <div class="tut-nav">
+      <button class="btn" id="tutBack">◀ Back</button>
+      <button class="btn" id="tutRetry">↻ Try again</button>
+      <button class="btn primary" id="tutNext" disabled>Next ▶</button>
+    </div>
+    <button class="btn tut-skip" id="tutSkip">Skip to game</button>
+  </div>
+</div>
+
 <div class="app">
   <div>
     <h1>♞ Chess</h1>
@@ -1164,6 +1240,17 @@ const endTitle = document.getElementById("endTitle");
 const endSub = document.getElementById("endSub");
 
 let st, history, repMap, gameOver, selected, legalForSelected, humanColor, thinking, pendingPromo;
+let tutorialMode = false;   // weakest random AI + suppress points during the practice game
+let tutIdx = 0, tutState = null;
+const startOverlay = document.getElementById("startOverlay");
+const tutOverlay = document.getElementById("tutOverlay");
+const tutBoardEl = document.getElementById("tutBoard");
+const tutTitleEl = document.getElementById("tutTitle");
+const tutTextEl = document.getElementById("tutText");
+const tutStepEl = document.getElementById("tutStep");
+const tutFeedbackEl = document.getElementById("tutFeedback");
+const tutBackBtn = document.getElementById("tutBack");
+const tutNextBtn = document.getElementById("tutNext");
 
 /* ---- Move sounds (synthesized with Web Audio, no asset files) ---- */
 let soundOn = true;
@@ -1827,6 +1914,7 @@ function capturedPoints() {
 }
 
 function awardPoints(outcome) {
+  if (tutorialMode) return;   // the practice game is for learning, not points
   if (pointsAwarded) return;
   pointsAwarded = true;
   const level = CHARACTERS[selectedChar].level;
@@ -2051,6 +2139,7 @@ function selectCharacter(i) {
   levelInfoEl.textContent = CHARACTERS[i].blurb;
   renderCharGrid();
   applyOpponentDisplay();
+  tutorialMode = false;
   resetGame();          // a fresh game against the new opponent
 }
 
@@ -2153,6 +2242,15 @@ function onTimeout() {
 
 function maybeAiTurn() {
   if (gameOver || st.turn === humanColor) return;
+  if (tutorialMode) {
+    // Weakest possible opponent: a uniformly random legal move.
+    const moves = legalMoves(st);
+    if (!moves.length) { render(); return; }
+    const m = moves[Math.floor(Math.random() * moves.length)];
+    thinking = true; renderStatus();
+    setTimeout(() => { thinking = false; playMove(m); }, 300);
+    return;
+  }
   const levelIdx = parseInt(levelEl.value, 10);
   const minThink = LEVELS[levelIdx].time;
   thinking = true;
@@ -2219,6 +2317,147 @@ function showPromoPicker(candidates) {
 }
 
 /* ---- Coach: general strategy tips + live position-aware advice ---- */
+/* ---- Beginner tutorial: learn each piece on a small board ---- */
+function tutBoard(n, placements) {
+  const b = new Array(n).fill(null);
+  for (const k in placements) b[+k] = placements[k];
+  return b;
+}
+const TUTORIAL_LESSONS = [
+  { cols: 5, rows: 5, move: "pawn", piece: "P", pieceSq: 17, board: tutBoard(25, { 17: "P", 11: "p" }),
+    title: "The Pawn", text: "Pawns move forward one square (or two on their first move). Click the pawn, then a glowing square.",
+    capture: { text: "Pawns capture diagonally — they can't take straight ahead. Click the pawn, then take the black piece!" } },
+  { cols: 5, rows: 5, move: "rook", piece: "R", pieceSq: 12, board: tutBoard(25, { 12: "R" }),
+    title: "The Rook", text: "Rooks move in straight lines — along rows and columns, as far as they like. Click the rook, then a glowing square." },
+  { cols: 5, rows: 5, move: "bishop", piece: "B", pieceSq: 12, board: tutBoard(25, { 12: "B" }),
+    title: "The Bishop", text: "Bishops move diagonally, any distance — and stay on one colour forever. Click the bishop, then a glowing square." },
+  { cols: 5, rows: 5, move: "knight", piece: "N", pieceSq: 12, board: tutBoard(25, { 12: "N" }),
+    title: "The Knight", text: "Knights move in an L-shape (two then one) and can jump over other pieces. Click the knight, then a glowing square." },
+  { cols: 5, rows: 5, move: "queen", piece: "Q", pieceSq: 12, board: tutBoard(25, { 12: "Q" }),
+    title: "The Queen", text: "The queen is the most powerful piece — she moves in straight lines AND diagonals. Click the queen, then a glowing square." },
+  { cols: 5, rows: 5, move: "king", piece: "K", pieceSq: 12, board: tutBoard(25, { 12: "K" }),
+    title: "The King", text: "The king moves one square in any direction. He's the most important piece — keep him safe! Click the king, then a glowing square." },
+  { cols: 5, rows: 5, move: "goal", piece: "R", pieceSq: 9, targets: [4], board: tutBoard(25, { 2: "k", 12: "K", 9: "R" }),
+    title: "The Goal: Checkmate", text: "You win by checkmate: attacking the enemy king so it has no safe square. Your king guards the escape squares — move the rook to the glowing square to checkmate the black king!" },
+];
+
+function tutMoveTargets(state) {
+  const L = state.lesson;
+  if (L.move === "goal") return L.targets.slice();
+  const { board, cols, rows } = state;
+  const from = state.pieceSq, r = Math.floor(from / cols), c = from % cols;
+  const inside = (rr, cc) => rr >= 0 && rr < rows && cc >= 0 && cc < cols;
+  const enemy = i => board[i] && board[i] === board[i].toLowerCase();
+  const empty = i => !board[i];
+  const out = [];
+  const slide = dirs => { for (const [dr, dc] of dirs) { let nr = r + dr, nc = c + dc; while (inside(nr, nc)) { const i = nr * cols + nc; if (empty(i)) out.push(i); else { if (enemy(i)) out.push(i); break; } nr += dr; nc += dc; } } };
+  const hop = offs => { for (const [dr, dc] of offs) { const nr = r + dr, nc = c + dc; if (inside(nr, nc)) { const i = nr * cols + nc; if (empty(i) || enemy(i)) out.push(i); } } };
+  if (L.move === "pawn") {
+    if (state.phase === "capture") {
+      for (const dc of [-1, 1]) { const nr = r - 1, nc = c + dc; if (inside(nr, nc) && enemy(nr * cols + nc)) out.push(nr * cols + nc); }
+    } else {
+      const one = (r - 1) * cols + c;
+      if (r - 1 >= 0 && empty(one)) { out.push(one); const two = (r - 2) * cols + c; if (r === rows - 2 && r - 2 >= 0 && empty(two)) out.push(two); }
+    }
+  } else if (L.move === "rook") slide(R_DIRS);
+  else if (L.move === "bishop") slide(B_DIRS);
+  else if (L.move === "queen") slide(B_DIRS.concat(R_DIRS));
+  else if (L.move === "knight") hop(N_OFFS);
+  else if (L.move === "king") hop(K_OFFS);
+  return out;
+}
+
+function openTutorial() {
+  startOverlay.style.display = "none";
+  tutOverlay.style.display = "flex";
+  tutIdx = 0;
+  loadLesson(0);
+}
+function loadLesson(i) {
+  tutIdx = i;
+  const L = TUTORIAL_LESSONS[i];
+  tutState = { lesson: L, board: L.board.slice(), cols: L.cols, rows: L.rows, pieceSq: L.pieceSq, phase: "move", selected: false, solved: false };
+  tutTitleEl.textContent = L.title;
+  tutTextEl.textContent = L.text;
+  tutStepEl.textContent = "Lesson " + (i + 1) + " of " + TUTORIAL_LESSONS.length;
+  tutFeedbackEl.textContent = "";
+  tutFeedbackEl.className = "tut-feedback info";
+  tutNextBtn.disabled = true;
+  tutNextBtn.textContent = i === TUTORIAL_LESSONS.length - 1 ? "Start playing ▶" : "Next ▶";
+  tutBackBtn.disabled = i === 0;
+  renderTutBoard();
+}
+function renderTutBoard() {
+  const s = tutState, { board, cols, rows } = s;
+  tutBoardEl.style.gridTemplateColumns = "repeat(" + cols + ", var(--tsq))";
+  tutBoardEl.innerHTML = "";
+  const targets = s.selected ? tutMoveTargets(s) : [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c;
+      const cell = document.createElement("div");
+      cell.className = "tsq " + ((r + c) % 2 === 0 ? "light" : "dark");
+      if (s.selected && idx === s.pieceSq) cell.classList.add("tut-sel");
+      const p = board[idx];
+      if (p) {
+        const span = document.createElement("span");
+        span.className = "tut-piece " + (p === p.toUpperCase() ? "w" : "b");
+        span.textContent = GLYPH[p.toUpperCase()];
+        cell.appendChild(span);
+      }
+      if (targets.includes(idx)) {
+        const mk = document.createElement("div");
+        mk.className = "tmark " + (board[idx] ? "ring" : "dot");
+        cell.appendChild(mk);
+      }
+      cell.addEventListener("click", () => onTutClick(idx));
+      tutBoardEl.appendChild(cell);
+    }
+  }
+}
+function tutFeedback(text, kind) { tutFeedbackEl.textContent = text; tutFeedbackEl.className = "tut-feedback " + kind; }
+function onTutClick(idx) {
+  const s = tutState, L = s.lesson;
+  if (idx === s.pieceSq) { s.selected = !s.selected; renderTutBoard(); return; }
+  if (s.selected) {
+    const targets = tutMoveTargets(s);
+    if (targets.includes(idx)) {
+      const wasCapture = !!s.board[idx];
+      s.board[s.pieceSq] = null;
+      s.board[idx] = L.piece;
+      s.pieceSq = idx;
+      s.selected = false;
+      playMoveSound(wasCapture, false, false);
+      if (L.capture && s.phase === "move") {
+        // reset to the original setup and ask for the diagonal capture
+        s.phase = "capture";
+        s.board = L.board.slice();
+        s.pieceSq = L.pieceSq;
+        renderTutBoard();
+        tutFeedback(L.capture.text, "good");
+        return;
+      }
+      s.solved = true;
+      tutNextBtn.disabled = false;
+      renderTutBoard();
+      if (L.move === "goal") tutFeedback("Checkmate! The black king can't escape — that's a win. 🎉", "good");
+      else if (s.phase === "capture") tutFeedback("Perfect — you captured it! Press Next ▶", "good");
+      else tutFeedback("Nice! That's how the " + PIECE_NAME[L.piece] + " moves. Press Next ▶", "good");
+      return;
+    }
+  }
+  tutFeedback("Click the piece, then one of the glowing squares.", "warn");
+}
+function tutNext() { if (tutIdx < TUTORIAL_LESSONS.length - 1) loadLesson(tutIdx + 1); else startCoachedGame(); }
+function tutBack() { if (tutIdx > 0) loadLesson(tutIdx - 1); }
+function tutRetry() { loadLesson(tutIdx); }
+function startCoachedGame() {
+  tutOverlay.style.display = "none";
+  tutorialMode = true;
+  lastScore = null;
+  resetGame();
+}
+
 const PIECE_NAME = { P: "pawn", N: "knight", B: "bishop", R: "rook", Q: "queen", K: "king" };
 const GENERAL_TIPS = [
   "Control the centre early — pawns on e4/d4 (or e5/d5) and pieces aimed at the middle give you more space.",
@@ -2281,6 +2520,9 @@ function coachTip() {
   }
   if (history.length < 24 && undeveloped >= 2)
     return { t: "Opening tip: develop your knights and bishops toward the centre and fight for the squares d4, d5, e4 and e5.", k: "info" };
+
+  if (tutorialMode)
+    return { t: "You're doing great! Look for safe captures and keep your pieces protected. This opponent plays randomly, so take your time.", k: "good" };
 
   return null; // fall back to a rotating general tip
 }
@@ -2448,14 +2690,15 @@ function render() {
 levelEl.addEventListener("change", () => {
   levelInfoEl.textContent = LEVELS[parseInt(levelEl.value, 10)].info;
 });
-sideEl.addEventListener("change", resetGame);
+function newNormalGame() { tutorialMode = false; resetGame(); }
+sideEl.addEventListener("change", newNormalGame);
 document.getElementById("timerSel").addEventListener("change", (e) => {
   moveTimeLimit = parseInt(e.target.value, 10);
   stopTimer();
   syncTimer();   // start/stop with the new setting on the current turn
 });
-document.getElementById("newgame").addEventListener("click", resetGame);
-document.getElementById("endNewGame").addEventListener("click", resetGame);
+document.getElementById("newgame").addEventListener("click", newNormalGame);
+document.getElementById("endNewGame").addEventListener("click", newNormalGame);
 document.getElementById("reviewBtn").addEventListener("click", startReview);
 document.getElementById("rvNext").addEventListener("click", () => {
   if (reviewIdx < reviewSteps.length - 1) { reviewIdx++; showReviewStep(); }
@@ -2490,6 +2733,14 @@ updateScoreUI();
 levelEl.value = CHARACTERS[selectedChar].level;
 levelInfoEl.textContent = CHARACTERS[selectedChar].blurb;
 resetGame();
+
+// Start screen + tutorial wiring
+document.getElementById("startPlay").addEventListener("click", () => { startOverlay.style.display = "none"; });
+document.getElementById("startBeginner").addEventListener("click", openTutorial);
+tutNextBtn.addEventListener("click", tutNext);
+tutBackBtn.addEventListener("click", tutBack);
+document.getElementById("tutRetry").addEventListener("click", tutRetry);
+document.getElementById("tutSkip").addEventListener("click", () => { tutorialMode = false; tutOverlay.style.display = "none"; startOverlay.style.display = "none"; });
 </script>
 </body>
 </html>
