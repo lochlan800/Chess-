@@ -402,6 +402,8 @@
 
   /* Character picker */
   .char-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; border-radius: 10px; }
+  #startGate .end-box { max-width: 94vw; }
+  .gate-grid { margin-top: 14px; width: min(380px, 80vw); }
   .char-grid.await { animation: gridpulse 1.1s ease-in-out infinite; outline: 2px solid var(--accent); outline-offset: 3px; }
   @keyframes gridpulse { 0%,100% { outline-color: rgba(122,162,247,0.35); } 50% { outline-color: rgba(122,162,247,1); } }
   .char-card {
@@ -517,7 +519,7 @@
     <h1 class="start-title">Chess</h1>
     <p class="start-sub">New to chess? Learn the pieces first.</p>
     <button class="btn primary start-big" id="startBeginner">📚 Beginner — learn to play</button>
-    <button class="btn start-big" id="startPlay">▶ Play game</button>
+    <button class="btn start-big" id="startPlay">▶ Start game</button>
   </div>
 </div>
 
@@ -554,9 +556,9 @@
       </div>
       <div class="end-overlay" id="startGate" style="display:none">
         <div class="end-box">
-          <div class="end-emoji">♟︎</div>
           <div class="end-title">Start game</div>
-          <div class="end-sub" id="startGateSub">Pick your opponent to begin — choose a character below.</div>
+          <div class="end-sub">Choose your opponent to begin</div>
+          <div class="char-grid gate-grid" id="gateGrid"></div>
         </div>
       </div>
       <div class="end-overlay" id="endOverlay" style="display:none">
@@ -2131,8 +2133,9 @@ function characterFace(c) {
   return characterSVG(c.id);
 }
 
-function renderCharGrid() {
-  charGridEl.innerHTML = "";
+function buildCharCards(container) {
+  if (!container) return;
+  container.innerHTML = "";
   CHARACTERS.forEach((c, i) => {
     const card = document.createElement("div");
     card.className = "char-card" + (i === selectedChar ? " selected" : "");
@@ -2140,8 +2143,12 @@ function renderCharGrid() {
                      `<div class="char-name">${c.short}</div><div class="char-lvl">Lvl ${c.level + 1}</div>`;
     card.title = c.name + " — " + c.blurb;
     card.addEventListener("click", () => selectCharacter(i));
-    charGridEl.appendChild(card);
+    container.appendChild(card);
   });
+}
+function renderCharGrid() {
+  buildCharCards(charGridEl);
+  buildCharCards(document.getElementById("gateGrid"));
 }
 
 function applyOpponentDisplay() {
@@ -2808,14 +2815,15 @@ levelInfoEl.textContent = CHARACTERS[selectedChar].blurb;
 awaitingStart = true;   // lock the board on load until an opponent is chosen
 resetGame();
 
-// Lock the board behind a "Start game — pick your opponent" gate.
+// Lock the board behind a "Start game — choose your opponent" gate; the
+// opponent chooser lives inside the gate itself.
 function armStartGate() {
   awaitingStart = true;
   tutorialMode = false;
   startOverlay.style.display = "none";
   tutOverlay.style.display = "none";
+  buildCharCards(document.getElementById("gateGrid"));
   document.getElementById("startGate").style.display = "flex";
-  charGridEl.classList.add("await");
   stopTimer();
   render();
 }
