@@ -2041,9 +2041,7 @@ function updateEvalBar() {
   const c = Math.max(-2000, Math.min(2000, humanCp));
   const winProb = 1 / (1 + Math.pow(10, -c / 400));           // 0..1 for your side
   evalFillEl.style.height = (winProb * 100).toFixed(1) + "%";
-  evalNumEl.textContent = Math.abs(humanCp) >= 2000
-    ? (humanCp > 0 ? "+M" : "-M")
-    : (humanCp >= 0 ? "+" : "") + (humanCp / 100).toFixed(1);
+  evalNumEl.textContent = Math.round(winProb * 100) + "%";    // your chance of winning
 }
 
 /* ---- Move timer: you have moveTimeLimit seconds per turn (0 = off) ---- */
