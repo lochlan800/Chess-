@@ -1060,6 +1060,21 @@ function evalSide(st) {
   return st.turn === "w" ? evaluate(st.board) : -evaluate(st.board);
 }
 
+// A search aborts by throwing TIME_UP from deep in the recursion, which skips
+// the matching unmakeMove() calls and leaves the position scrambled. Snapshot
+// before searching and always restore, so the real board is never corrupted.
+function snapState(s) {
+  return { board: s.board.slice(), turn: s.turn,
+           castle: { K: s.castle.K, Q: s.castle.Q, k: s.castle.k, q: s.castle.q },
+           ep: s.ep, half: s.half };
+}
+function restoreState(s, snap) {
+  for (let i = 0; i < 64; i++) s.board[i] = snap.board[i];
+  s.turn = snap.turn; s.ep = snap.ep; s.half = snap.half;
+  s.castle.K = snap.castle.K; s.castle.Q = snap.castle.Q;
+  s.castle.k = snap.castle.k; s.castle.q = snap.castle.q;
+}
+
 function orderMoves(moves) {
   for (const m of moves) {
     let s = 0;
@@ -1165,25 +1180,30 @@ function chooseAiMove(st, levelIdx, ply) {
   searchDeadline = Date.now() + cfg.time;
   let scored = moves.map(m => ({ m, sc: 0 }));
 
-  for (let d = 1; d <= cfg.depth; d++) {
-    const attempt = [];
-    try {
-      let alpha = -Infinity;
-      for (const e of scored) {
-        makeMove(st, e.m);
-        // with noise we need real scores for every move, so skip root pruning
-        const beta = cfg.noise > 0 ? Infinity : -alpha;
-        const sc = -negamax(st, d - 1, -Infinity, beta, 1, cfg.q);
-        unmakeMove(st, e.m);
-        attempt.push({ m: e.m, sc });
-        if (sc > alpha) alpha = sc;
+  const snap = snapState(st);
+  try {
+    for (let d = 1; d <= cfg.depth; d++) {
+      const attempt = [];
+      try {
+        let alpha = -Infinity;
+        for (const e of scored) {
+          makeMove(st, e.m);
+          // with noise we need real scores for every move, so skip root pruning
+          const beta = cfg.noise > 0 ? Infinity : -alpha;
+          const sc = -negamax(st, d - 1, -Infinity, beta, 1, cfg.q);
+          unmakeMove(st, e.m);
+          attempt.push({ m: e.m, sc });
+          if (sc > alpha) alpha = sc;
+        }
+      } catch (err) {
+        if (err === TIME_UP) break; // keep results from last completed depth
+        throw err;
       }
-    } catch (err) {
-      if (err === TIME_UP) break; // keep results from last completed depth
-      throw err;
+      attempt.sort((a, b) => b.sc - a.sc);
+      scored = attempt;
     }
-    attempt.sort((a, b) => b.sc - a.sc);
-    scored = attempt;
+  } finally {
+    restoreState(st, snap);   // undo any half-applied search moves
   }
 
   let best = scored[0], bestVal = -Infinity;
@@ -1353,18 +1373,23 @@ function scoreAllMoves(state, depth, timeMs) {
   nodeCount = 0;
   searchDeadline = Date.now() + timeMs;
   let scored = moves.map(m => ({ m, sc: 0 }));
-  for (let d = 1; d <= depth; d++) {
-    const attempt = [];
-    try {
-      for (const e of scored) {
-        makeMove(state, e.m);
-        const sc = -negamax(state, d - 1, -Infinity, Infinity, 1, true);
-        unmakeMove(state, e.m);
-        attempt.push({ m: e.m, sc });
-      }
-    } catch (err) { if (err === TIME_UP) break; throw err; }
-    attempt.sort((a, b) => b.sc - a.sc);
-    scored = attempt;
+  const snap = snapState(state);
+  try {
+    for (let d = 1; d <= depth; d++) {
+      const attempt = [];
+      try {
+        for (const e of scored) {
+          makeMove(state, e.m);
+          const sc = -negamax(state, d - 1, -Infinity, Infinity, 1, true);
+          unmakeMove(state, e.m);
+          attempt.push({ m: e.m, sc });
+        }
+      } catch (err) { if (err === TIME_UP) break; throw err; }
+      attempt.sort((a, b) => b.sc - a.sc);
+      scored = attempt;
+    }
+  } finally {
+    restoreState(state, snap);   // undo any half-applied search moves
   }
   return scored;
 }
@@ -2204,9 +2229,11 @@ function reactToMove(m, isComputer, checking) {
 let liveEval = 0;   // white-perspective centipawns
 function computeLiveEval() {
   nodeCount = 0; searchDeadline = Date.now() + 150;
+  const snap = snapState(st);
   let sc;
   try { sc = negamax(st, 2, -Infinity, Infinity, 0, true); }
   catch (e) { sc = evalSide(st); }
+  finally { restoreState(st, snap); }   // never leave the real board corrupted
   liveEval = st.turn === "w" ? sc : -sc;
 }
 function updateEvalBar() {
