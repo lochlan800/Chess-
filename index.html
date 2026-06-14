@@ -2331,20 +2331,35 @@ function tutBoard(n, placements) {
   return b;
 }
 const TUTORIAL_LESSONS = [
-  { cols: 5, rows: 5, move: "pawn", piece: "P", pieceSq: 17, board: tutBoard(25, { 17: "P", 11: "p" }),
+  // --- Learn each piece (with glowing hints) ---
+  { step: "Lesson 1 of 6", cols: 5, rows: 5, move: "pawn", piece: "P", pieceSq: 17, board: tutBoard(25, { 17: "P", 11: "p" }),
     title: "The Pawn", text: "Pawns move forward one square (or two on their first move). Click the pawn, then a glowing square.",
     capture: { text: "Pawns capture diagonally — they can't take straight ahead. Click the pawn, then take the black piece!" } },
-  { cols: 5, rows: 5, move: "rook", piece: "R", pieceSq: 12, board: tutBoard(25, { 12: "R" }),
+  { step: "Lesson 2 of 6", cols: 5, rows: 5, move: "rook", piece: "R", pieceSq: 12, board: tutBoard(25, { 12: "R" }),
     title: "The Rook", text: "Rooks move in straight lines — along rows and columns, as far as they like. Click the rook, then a glowing square." },
-  { cols: 5, rows: 5, move: "bishop", piece: "B", pieceSq: 12, board: tutBoard(25, { 12: "B" }),
+  { step: "Lesson 3 of 6", cols: 5, rows: 5, move: "bishop", piece: "B", pieceSq: 12, board: tutBoard(25, { 12: "B" }),
     title: "The Bishop", text: "Bishops move diagonally, any distance — and stay on one colour forever. Click the bishop, then a glowing square." },
-  { cols: 5, rows: 5, move: "knight", piece: "N", pieceSq: 12, board: tutBoard(25, { 12: "N" }),
+  { step: "Lesson 4 of 6", cols: 5, rows: 5, move: "knight", piece: "N", pieceSq: 12, board: tutBoard(25, { 12: "N" }),
     title: "The Knight", text: "Knights move in an L-shape (two then one) and can jump over other pieces. Click the knight, then a glowing square." },
-  { cols: 5, rows: 5, move: "queen", piece: "Q", pieceSq: 12, board: tutBoard(25, { 12: "Q" }),
+  { step: "Lesson 5 of 6", cols: 5, rows: 5, move: "queen", piece: "Q", pieceSq: 12, board: tutBoard(25, { 12: "Q" }),
     title: "The Queen", text: "The queen is the most powerful piece — she moves in straight lines AND diagonals. Click the queen, then a glowing square." },
-  { cols: 5, rows: 5, move: "king", piece: "K", pieceSq: 12, board: tutBoard(25, { 12: "K" }),
+  { step: "Lesson 6 of 6", cols: 5, rows: 5, move: "king", piece: "K", pieceSq: 12, board: tutBoard(25, { 12: "K" }),
     title: "The King", text: "The king moves one square in any direction. He's the most important piece — keep him safe! Click the king, then a glowing square." },
-  { cols: 5, rows: 5, move: "goal", piece: "R", pieceSq: 9, targets: [4], board: tutBoard(25, { 2: "k", 12: "K", 9: "R" }),
+  // --- Test each piece (NO hints) ---
+  { step: "Test 1 of 6", test: true, cols: 5, rows: 5, move: "pawn", piece: "P", pieceSq: 17, board: tutBoard(25, { 17: "P" }),
+    title: "Test: the Pawn", text: "No hints this time! Make a legal pawn move — click the pawn, then where it can go." },
+  { step: "Test 2 of 6", test: true, cols: 5, rows: 5, move: "rook", piece: "R", pieceSq: 12, board: tutBoard(25, { 12: "R" }),
+    title: "Test: the Rook", text: "Make a legal rook move — no hints. Click the rook, then a square it can reach." },
+  { step: "Test 3 of 6", test: true, cols: 5, rows: 5, move: "bishop", piece: "B", pieceSq: 12, board: tutBoard(25, { 12: "B" }),
+    title: "Test: the Bishop", text: "Make a legal bishop move — no hints. Remember: diagonals only." },
+  { step: "Test 4 of 6", test: true, cols: 5, rows: 5, move: "knight", piece: "N", pieceSq: 12, board: tutBoard(25, { 12: "N" }),
+    title: "Test: the Knight", text: "Make a legal knight move — no hints. Remember the L-shape." },
+  { step: "Test 5 of 6", test: true, cols: 5, rows: 5, move: "queen", piece: "Q", pieceSq: 12, board: tutBoard(25, { 12: "Q" }),
+    title: "Test: the Queen", text: "Make a legal queen move — no hints. Lines or diagonals." },
+  { step: "Test 6 of 6", test: true, cols: 5, rows: 5, move: "king", piece: "K", pieceSq: 12, board: tutBoard(25, { 12: "K" }),
+    title: "Test: the King", text: "Make a legal king move — no hints. One square in any direction." },
+  // --- The goal ---
+  { step: "The goal", cols: 5, rows: 5, move: "goal", piece: "R", pieceSq: 9, targets: [4], board: tutBoard(25, { 2: "k", 12: "K", 9: "R" }),
     title: "The Goal: Checkmate", text: "You win by checkmate: attacking the enemy king so it has no safe square. Your king guards the escape squares — move the rook to the glowing square to checkmate the black king!" },
 ];
 
@@ -2386,7 +2401,7 @@ function loadLesson(i) {
   tutState = { lesson: L, board: L.board.slice(), cols: L.cols, rows: L.rows, pieceSq: L.pieceSq, phase: "move", selected: false, solved: false };
   tutTitleEl.textContent = L.title;
   tutTextEl.textContent = L.text;
-  tutStepEl.textContent = "Lesson " + (i + 1) + " of " + TUTORIAL_LESSONS.length;
+  tutStepEl.textContent = L.step || ("Lesson " + (i + 1));
   tutFeedbackEl.textContent = "";
   tutFeedbackEl.className = "tut-feedback info";
   tutNextBtn.disabled = true;
@@ -2398,7 +2413,8 @@ function renderTutBoard() {
   const s = tutState, { board, cols, rows } = s;
   tutBoardEl.style.gridTemplateColumns = "repeat(" + cols + ", var(--tsq))";
   tutBoardEl.innerHTML = "";
-  const targets = s.selected ? tutMoveTargets(s) : [];
+  // In a test, hide the move hints so the learner has to recall the move.
+  const targets = (s.selected && !s.lesson.test) ? tutMoveTargets(s) : [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const idx = r * cols + c;
@@ -2448,12 +2464,16 @@ function onTutClick(idx) {
       tutNextBtn.disabled = false;
       renderTutBoard();
       if (L.move === "goal") tutFeedback("Checkmate! The black king can't escape — that's a win. 🎉", "good");
+      else if (L.test) tutFeedback("✓ Correct! You've got the " + PIECE_NAME[L.piece] + ". Press Next ▶", "good");
       else if (s.phase === "capture") tutFeedback("Perfect — you captured it! Press Next ▶", "good");
       else tutFeedback("Nice! That's how the " + PIECE_NAME[L.piece] + " moves. Press Next ▶", "good");
       return;
     }
+    // a square was clicked that isn't a legal move
+    if (L.test) { tutFeedback("✗ That's not a legal " + PIECE_NAME[L.piece] + " move — try again.", "warn"); return; }
   }
-  tutFeedback("Click the piece, then one of the glowing squares.", "warn");
+  tutFeedback(L.test ? ("Click the " + PIECE_NAME[L.piece] + ", then where it can move.")
+                     : "Click the piece, then one of the glowing squares.", "warn");
 }
 function tutNext() { if (tutIdx < TUTORIAL_LESSONS.length - 1) loadLesson(tutIdx + 1); else startCoachedGame(); }
 function tutBack() { if (tutIdx > 0) loadLesson(tutIdx - 1); }
