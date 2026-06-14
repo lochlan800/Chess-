@@ -21,7 +21,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   /* Square size is fully responsive: fit the board to the viewport width (and
      height), capped at 72px, so it never spills past the screen edges. */
-  :root { --sq: min(calc((100vw - 28px) / 8), calc((100vh - 130px) / 8), 72px); }
+  :root { --sq: min(calc((100vw - 60px) / 8), calc((100vh - 130px) / 8), 72px); }
   html, body { max-width: 100%; overflow-x: hidden; }
   body {
     font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -36,7 +36,7 @@
   @media (max-width: 700px) {
     body { padding: 10px; align-items: flex-start; }
     .app { gap: 14px; }
-    :root { --sq: min(calc((100vw - 20px) / 8), 72px); }
+    :root { --sq: min(calc((100vw - 52px) / 8), 72px); }
   }
   .app {
     display: flex;
@@ -53,6 +53,22 @@
   }
   .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
 
+  .board-row { display: flex; gap: 8px; align-items: stretch; }
+  .eval-bar {
+    width: 16px; border-radius: 5px; overflow: hidden; position: relative;
+    background: #2b2f3a; /* opponent side (top) */
+    align-self: stretch;
+  }
+  .eval-fill {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 50%;
+    background: linear-gradient(180deg, #f4f6fb, #cfd6e6); /* your side (bottom) */
+    transition: height 0.4s ease;
+  }
+  .eval-num {
+    position: absolute; left: 0; right: 0; bottom: 2px; text-align: center;
+    font-size: 8px; font-weight: 800; color: #fff; letter-spacing: -0.3px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.95);
+  }
   .board-wrap { position: relative; }
   .review-arrow {
     position: absolute; inset: 0; width: 100%; height: 100%;
@@ -428,6 +444,11 @@
   <div>
     <h1>♞ Chess</h1>
     <div class="subtitle">Play against the computer — pick your level</div>
+    <div class="board-row">
+    <div class="eval-bar" id="evalBar" title="Who's winning">
+      <div class="eval-fill" id="evalFill"></div>
+      <span class="eval-num" id="evalNum">0.0</span>
+    </div>
     <div class="board-wrap">
       <div class="board" id="board"></div>
       <svg class="review-arrow" id="reviewArrow" viewBox="0 0 8 8" preserveAspectRatio="none" style="display:none"></svg>
@@ -456,6 +477,7 @@
       </div>
 
     </div>
+    </div>
 
     <div class="reviewbar" id="reviewBar" style="display:none">
       <div class="rv-summary" id="reviewSummary"></div>
@@ -475,6 +497,8 @@
           <div class="hs-box"><span class="hs-val" id="hsAcc">–</span><span class="hs-label">Accuracy</span></div>
           <div class="hs-box"><span class="hs-val" id="hsMist">–</span><span class="hs-label">Mistakes</span></div>
           <div class="hs-box"><span class="hs-val" id="hsGood">–</span><span class="hs-label">Good moves</span></div>
+          <div class="hs-box"><span class="hs-val" id="hsLead">–</span><span class="hs-label">Time in the lead</span></div>
+          <div class="hs-box"><span class="hs-val" id="hsPeak">–</span><span class="hs-label">Your biggest edge</span></div>
         </div>
       </div>
 
@@ -1082,6 +1106,9 @@ const movelistEl = document.getElementById("movelist");
 const timerEl = document.getElementById("timer");
 const timerBar = document.getElementById("timerBar");
 const timerText = document.getElementById("timerText");
+const evalBarEl = document.getElementById("evalBar");
+const evalFillEl = document.getElementById("evalFill");
+const evalNumEl = document.getElementById("evalNum");
 const levelEl = document.getElementById("level");
 const levelInfoEl = document.getElementById("levelinfo");
 const charGridEl = document.getElementById("charGrid");
@@ -1178,6 +1205,7 @@ function resetGame() {
   moveTimes = [];
   pressureCount = 0;
   pointsAwarded = false;
+  liveEval = 0;
   render();
   say("greet");
   maybeAiTurn();
@@ -1317,11 +1345,12 @@ function startReview() {
     short: introHtml, long: introHtml,
   }];
   const stats = { count: 0, blunder: 0, mistake: 0, inacc: 0, good: 0, lossSum: 0, worst: null };
+  const evalSeries = [];   // your-perspective eval after each ply (for the lead readout)
   let i = 0;
 
   function step() {
     if (reviewAbort) return;
-    if (i >= moves.length) { finishReview(stats); return; }
+    if (i >= moves.length) { finishReview(stats, evalSeries); return; }
     const mv = moves[i];
     const moveNum = Math.floor(i / 2) + 1;
     if (s.turn === humanSide) {
@@ -1388,6 +1417,11 @@ function startReview() {
                          short, long, marks: giveaway ? [{ sq: free.sq, kind: "good" }] : [],
                          influence: giveaway ? free.v : 0 });
     }
+    // record the position's eval from your perspective (for the lead timeline)
+    nodeCount = 0; searchDeadline = Date.now() + 120;
+    let q; try { q = negamax(s, 1, -Infinity, Infinity, 0, true); } catch (e) { q = evalSide(s); }
+    const whiteCp = s.turn === "w" ? q : -q;
+    evalSeries.push(whiteCp * (humanSide === "w" ? 1 : -1));
     i++;
     reviewProgress.textContent = `Analysing… move ${Math.ceil(i / 2)} of ${Math.ceil(moves.length / 2)}`;
     setTimeout(step, 0);
@@ -1395,7 +1429,7 @@ function startReview() {
   setTimeout(step, 30);
 }
 
-function finishReview(stats) {
+function finishReview(stats, evalSeries) {
   // Keep only the influential moments (errors, free pieces won, gifts), and
   // cap to the most significant so the walkthrough is short, not 100+ steps.
   const intro = reviewSteps[0];
@@ -1407,6 +1441,29 @@ function finishReview(stats) {
   }
   reviewSteps = [intro, ...key];
 
+  // Lead timeline: who was ahead and when.
+  const n = evalSeries.length;
+  let lead = 0, behind = 0, onCourseIdx = -1, peak = -1e9, peakIdx = 0;
+  evalSeries.forEach((e, idx) => {
+    if (e > 80) lead++; else if (e < -80) behind++;
+    if (e >= 120) onCourseIdx = idx;
+    if (e > peak) { peak = e; peakIdx = idx; }
+  });
+  const leadPct = n ? Math.round(lead / n * 100) : 0;
+  const behindPct = n ? Math.round(behind / n * 100) : 0;
+  const onCoursePct = onCourseIdx >= 0 ? Math.round((onCourseIdx + 1) / n * 100) : 0;
+  const nm = CHARACTERS[selectedChar].short;
+  const outcome = gameOver && gameOver.winnerColor ? (gameOver.winnerColor === humanColor ? "win" : "loss") : "draw";
+  let leadText;
+  if (outcome === "win")
+    leadText = `You were ahead for ${leadPct}% of the game and converted it.`;
+  else if (outcome === "loss")
+    leadText = onCoursePct >= 35
+      ? `You were on course to win through the first ${onCoursePct}% of the game, then it slipped away.`
+      : `${nm} held the lead for ${behindPct}% of the game.`;
+  else
+    leadText = `It stayed close — you held the lead for ${leadPct}% of the game.`;
+
   const acc = stats.count ? Math.max(25, Math.min(99, Math.round(100 - (stats.lossSum / stats.count) / 9))) : 100;
   reviewStats = {
     accuracy: acc,
@@ -1414,11 +1471,12 @@ function finishReview(stats) {
     good: stats.good,
     avgTime: moveTimes.length ? moveTimes.reduce((a, b) => a + b, 0) / moveTimes.length : 0,
     pressureCount: pressureCount,
+    leadPct, peak: peak > -1e9 ? peak : 0, peakMove: Math.floor(peakIdx / 2) + 1,
   };
   let summary = `<b>${acc}% accuracy</b> across your ${stats.count} moves — `
     + `${stats.blunder} blunder${stats.blunder === 1 ? "" : "s"}, `
     + `${stats.mistake} mistake${stats.mistake === 1 ? "" : "s"}, `
-    + `${stats.inacc} inaccurac${stats.inacc === 1 ? "y" : "ies"}. `;
+    + `${stats.inacc} inaccurac${stats.inacc === 1 ? "y" : "ies"}. ${leadText} `;
   if (key.length) {
     summary += `Showing the ${key.length} most influential moment${key.length === 1 ? "" : "s"}. `;
     summary += stats.worst ? `Biggest lesson: ${reviewReason(stats.worst).fix}` : "";
@@ -1553,6 +1611,9 @@ function renderStats() {
   document.getElementById("hsAcc").textContent = s.accuracy != null ? s.accuracy + "%" : "–";
   document.getElementById("hsMist").textContent = s.mistakes != null ? s.mistakes : "–";
   document.getElementById("hsGood").textContent = s.good != null ? s.good : "–";
+  document.getElementById("hsLead").textContent = s.leadPct != null ? s.leadPct + "%" : "–";
+  document.getElementById("hsPeak").textContent = s.peak != null
+    ? (s.peak >= 0 ? "+" : "") + (s.peak / 100).toFixed(1) : "–";
 }
 
 function showEndOverlay() {
@@ -1674,6 +1735,7 @@ function playMove(m) {
   repMap[key] = (repMap[key] || 0) + 1;
   m.repKey = key;
   checkGameEnd();
+  computeLiveEval();
   if (gameOver) awardPoints(gameOver.winnerColor ? (gameOver.winnerColor === humanColor ? "win" : "loss") : "draw");
   const checking = inCheck(st, st.turn);
   if (checking) nota += gameOver ? "#" : "+";
@@ -1961,6 +2023,27 @@ function reactToMove(m, isComputer, checking) {
     if (gameOver && gameOver.winnerColor === humanColor) say("lose");
     else if (piece) say("lostPiece", piece);
   }
+}
+
+/* ---- Live evaluation bar: who is on course to win ---- */
+let liveEval = 0;   // white-perspective centipawns
+function computeLiveEval() {
+  nodeCount = 0; searchDeadline = Date.now() + 150;
+  let sc;
+  try { sc = negamax(st, 2, -Infinity, Infinity, 0, true); }
+  catch (e) { sc = evalSide(st); }
+  liveEval = st.turn === "w" ? sc : -sc;
+}
+function updateEvalBar() {
+  if (reviewMode) { evalBarEl.style.display = "none"; return; }
+  evalBarEl.style.display = "";
+  const humanCp = liveEval * (humanColor === "w" ? 1 : -1);   // + = you're ahead
+  const c = Math.max(-2000, Math.min(2000, humanCp));
+  const winProb = 1 / (1 + Math.pow(10, -c / 400));           // 0..1 for your side
+  evalFillEl.style.height = (winProb * 100).toFixed(1) + "%";
+  evalNumEl.textContent = Math.abs(humanCp) >= 2000
+    ? (humanCp > 0 ? "+M" : "-M")
+    : (humanCp >= 0 ? "+" : "") + (humanCp / 100).toFixed(1);
 }
 
 /* ---- Move timer: you have moveTimeLimit seconds per turn (0 = off) ---- */
@@ -2302,6 +2385,7 @@ function render() {
   renderCaptured();
   renderMoveList();
   syncTimer();
+  updateEvalBar();
   if (reviewMode) return;             // review bar drives the UI; leave overlays alone
   if (gameOver) showEndOverlay();
   else endOverlay.style.display = "none";
