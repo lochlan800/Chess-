@@ -212,6 +212,11 @@
   .rv-comment .rv-move { font-weight: 700; display: block; margin-bottom: 3px; }
   .rv-comment .rv-fix { display: block; margin-top: 6px; color: #b8e994; font-size: 13px; }
   .rv-comment .rv-fix::before { content: "✅ "; }
+  .rv-more {
+    display: block; margin-top: 8px; font-size: 12px; font-weight: 700;
+    color: var(--accent); background: none; border: none; cursor: pointer; padding: 0;
+  }
+  .rv-more:hover { text-decoration: underline; }
   .rv-nav { display: flex; gap: 8px; align-items: center; }
   .rv-nav .btn { flex: 1; padding: 9px 8px; }
   .rv-counter { font-size: 12px; color: var(--muted); min-width: 78px; text-align: center; }
@@ -1115,23 +1120,27 @@ function gradeOf(loss, allowedMate) {
 // yellow arrow and the engine's stronger move is the green arrow.
 function reviewReason(r) {
   if (r.allowedMate)
-    return { detail: `This let the computer set up a forced checkmate. The green arrow shows a move that avoids it.`,
+    return { short: "Allowed a forced checkmate.",
+             detail: `This let the computer set up a forced checkmate. The green arrow shows a move that avoids it.`,
              fix: "Check the computer's reply for checks and mating threats before you move, and keep your king safe — castle early and leave it escape squares.",
              marks: [] };
   const hung = findUndefended(r.afterBoard, r.color);
   if (hung && hung.v >= 300)
-    return { detail: `It left your ${PIECE_NAME[hung.p.toUpperCase()]} undefended and free to capture. The green arrow shows a safer move.`,
+    return { short: `Left your ${PIECE_NAME[hung.p.toUpperCase()]} hanging.`,
+             detail: `It left your ${PIECE_NAME[hung.p.toUpperCase()]} undefended and free to capture. The green arrow shows a safer move.`,
              fix: "Before committing a move, check whether it leaves one of your pieces undefended and attacked. If it does, defend it or pick a safer move.",
              marks: [] };
   if (r.bestMove.capture) {
     const opp = r.color === "w" ? "b" : "w";
     const tgt = r.bestMove.to;
     if (attacked(r.beforeBoard, tgt, r.color) && !attacked(r.beforeBoard, tgt, opp))
-      return { detail: `You missed free material — the green arrow shows how to win the undefended ${PIECE_NAME[r.bestMove.capture.toUpperCase()]} (circled green).`,
+      return { short: `Missed winning a free ${PIECE_NAME[r.bestMove.capture.toUpperCase()]}.`,
+               detail: `You missed free material — the green arrow shows how to win the undefended ${PIECE_NAME[r.bestMove.capture.toUpperCase()]} (circled green).`,
                fix: "Every move, scan for undefended enemy pieces — winning free material is the easiest path to victory.",
                marks: [{ sq: tgt, kind: "good" }] };
   }
-  return { detail: `This gave up about ${(r.loss / 100).toFixed(1)} points — the green arrow shows the stronger move.`,
+  return { short: `Gave up about ${(r.loss / 100).toFixed(1)} points.`,
+           detail: `This gave up about ${(r.loss / 100).toFixed(1)} points — the green arrow shows the stronger move.`,
            fix: "After choosing a move, pause and ask \"what is the computer's best reply?\" Looking one move deeper catches most slips.",
            marks: [] };
 }
@@ -1142,8 +1151,10 @@ function moveComment(r, grade) {
   if (grade) {
     const reason = reviewReason(r);
     const label = grade === "blunder" ? "❌ Blunder" : grade === "mistake" ? "⚠️ Mistake" : "🤔 Inaccuracy";
+    const head = `<span class="rv-move">Move ${r.moveNum}. Your move (yellow arrow) — ${label}</span>`;
     return { grade, marks: reason.marks, influence: r.allowedMate ? 1e6 : r.loss,
-             html: `<span class="rv-move">Move ${r.moveNum}. Your move (yellow arrow) — ${label}</span>${reason.detail}<span class="rv-fix">${reason.fix}</span>` };
+             short: head + reason.short,
+             long: head + reason.detail + `<span class="rv-fix">${reason.fix}</span>` };
   }
   // Good move — only treat it as influential if it won a piece for free.
   let why = "A safe, sensible choice.";
@@ -1154,8 +1165,8 @@ function moveComment(r, grade) {
     why = `Nice — you won the ${PIECE_NAME[r.captured.toUpperCase()]}${wonFree ? " for free (the square marked green)" : ""}.`;
     if (wonFree) { marks = [{ sq: r.captureSq, kind: "good" }]; influence = VAL[r.captured.toUpperCase()]; }
   }
-  return { grade: "good", marks, influence,
-           html: `<span class="rv-move">Move ${r.moveNum}. Your move (shown by the arrow) — 👍 Good move</span>${why}` };
+  const head = `<span class="rv-move">Move ${r.moveNum}. Your move — 👍 Good move</span>`;
+  return { grade: "good", marks, influence, short: head, long: head + why };
 }
 
 function startReview() {
@@ -1168,9 +1179,10 @@ function startReview() {
   const moves = history.slice();
   const humanSide = humanColor;
   const s = newState();
+  const introHtml = `<span class="rv-move">Starting position</span>Press <b>Next ▶</b> to walk through the key moments — I'll explain each one.`;
   reviewSteps = [{
     board: s.board.slice(), from: -1, to: -1, stm: s.turn, grade: null, marks: [],
-    html: `<span class="rv-move">Starting position</span>Press <b>Next ▶</b> to walk through the game — I'll explain each of your moves.`,
+    short: introHtml, long: introHtml,
   }];
   const stats = { count: 0, blunder: 0, mistake: 0, inacc: 0, good: 0, lossSum: 0, worst: null };
   let i = 0;
@@ -1206,23 +1218,24 @@ function startReview() {
         // (yellow arrow) and the engine's stronger move (green arrow).
         reviewSteps.push({ board: beforeBoard, from: mv.from, to: mv.to,
                            bestFrom: best.m.from, bestTo: best.m.to,
-                           stm: humanSide, grade: c.grade, html: c.html,
+                           stm: humanSide, grade: c.grade, short: c.short, long: c.long,
                            marks: c.marks || [], influence: c.influence || 0 });
       } else {
         reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn,
-                           grade: c.grade, html: c.html, marks: c.marks || [], influence: c.influence || 0 });
+                           grade: c.grade, short: c.short, long: c.long, marks: c.marks || [], influence: c.influence || 0 });
       }
     } else {
       makeMove(s, mv);
       const compColor = humanSide === "w" ? "b" : "w";
       const free = findUndefended(s.board, compColor);
       const giveaway = free && free.v >= 300;
-      let html = `<span class="rv-move">Move ${moveNum}. Computer's move (shown by the arrow)</span>`;
-      html += giveaway
+      const head = `<span class="rv-move">Move ${moveNum}. Computer's move (yellow arrow)</span>`;
+      const long = head + (giveaway
         ? `💡 It left its ${PIECE_NAME[free.p.toUpperCase()]} undefended on the square marked green — that was a chance for you.`
-        : `The computer replies.`;
-      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: null, html,
-                         marks: giveaway ? [{ sq: free.sq, kind: "good" }] : [],
+        : `The computer replies.`);
+      const short = head + (giveaway ? `💡 Left a ${PIECE_NAME[free.p.toUpperCase()]} hanging.` : `The computer replies.`);
+      reviewSteps.push({ board: s.board.slice(), from: mv.from, to: mv.to, stm: s.turn, grade: null,
+                         short, long, marks: giveaway ? [{ sq: free.sq, kind: "good" }] : [],
                          influence: giveaway ? free.v : 0 });
     }
     i++;
@@ -1260,7 +1273,7 @@ function finishReview(stats) {
     summary += `Showing the ${key.length} most influential moment${key.length === 1 ? "" : "s"}. `;
     summary += stats.worst ? `Biggest lesson: ${reviewReason(stats.worst).fix}` : "";
   } else {
-    intro.html = `<span class="rv-move">Nothing major to review</span>You played a clean game — no big mistakes or missed chances. Nicely done!`;
+    intro.short = intro.long = `<span class="rv-move">Nothing major to review</span>You played a clean game — no big mistakes or missed chances. Nicely done!`;
   }
   reviewSummary.innerHTML = summary;
   reviewOverlay.style.display = "none";
@@ -1272,10 +1285,19 @@ function finishReview(stats) {
   showReviewStep();
 }
 
-function showReviewStep() {
+let reviewExpanded = false;
+function paintReviewComment() {
   const stp = reviewSteps[reviewIdx];
   reviewComment.className = "rv-comment" + (stp.grade ? " " + stp.grade : "");
-  reviewComment.innerHTML = stp.html;
+  const hasMore = stp.long && stp.long !== stp.short;
+  reviewComment.innerHTML = (reviewExpanded ? stp.long : stp.short) +
+    (hasMore ? `<button class="rv-more" id="rvMore">${reviewExpanded ? "Show less ▴" : "Show more ▾"}</button>` : "");
+  const moreBtn = document.getElementById("rvMore");
+  if (moreBtn) moreBtn.addEventListener("click", () => { reviewExpanded = !reviewExpanded; paintReviewComment(); });
+}
+function showReviewStep() {
+  reviewExpanded = false;       // each move starts collapsed (short version)
+  paintReviewComment();
   rvCounter.textContent = reviewIdx === 0
     ? (reviewSteps.length > 1 ? "Start" : "—")
     : `Key ${reviewIdx} / ${reviewSteps.length - 1}`;
