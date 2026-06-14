@@ -269,6 +269,49 @@
   @media (max-width: 700px) {
     .panel { width: calc(8 * var(--sq)); }
   }
+  /* Opponent banner + speech bubble */
+  .opponent { display: flex; align-items: center; gap: 12px; }
+  .opp-face {
+    flex: 0 0 auto; width: 56px; height: 56px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; line-height: 1;
+    background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.35), rgba(0,0,0,0.25)), var(--opp-color, #5b6480);
+    border: 2px solid rgba(255,255,255,0.35);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  }
+  .opp-info { flex: 1; min-width: 0; }
+  .opp-name { font-size: 14px; font-weight: 800; margin-bottom: 4px; }
+  .opp-bubble {
+    position: relative; font-size: 13px; line-height: 1.35;
+    background: #fff; color: #1a1f2b; border-radius: 10px;
+    padding: 7px 10px; min-height: 16px;
+    opacity: 0; transform: translateY(-3px); transition: opacity 0.2s, transform 0.2s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  }
+  .opp-bubble.show { opacity: 1; transform: translateY(0); }
+  .opp-bubble::before {
+    content: ""; position: absolute; left: -6px; top: 12px;
+    border: 6px solid transparent; border-right-color: #fff; border-left: 0;
+  }
+
+  /* Character picker */
+  .char-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .char-card {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 7px 2px; border-radius: 10px; cursor: pointer;
+    background: rgba(0,0,0,0.22); border: 2px solid transparent; transition: all 0.15s;
+  }
+  .char-card:hover { background: rgba(255,255,255,0.08); }
+  .char-card.selected { border-color: var(--accent); background: rgba(122,162,247,0.18); }
+  .char-emoji {
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+    background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.35), rgba(0,0,0,0.25)), var(--cc, #5b6480);
+    border: 1.5px solid rgba(255,255,255,0.3);
+  }
+  .char-name { font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.1; }
+  .char-lvl { font-size: 8.5px; color: var(--muted); }
+
   .status {
     font-size: 15px; font-weight: 600;
     min-height: 42px;
@@ -430,6 +473,14 @@
   </div>
 
   <div class="panel">
+    <div class="opponent" id="opponent">
+      <div class="opp-face" id="oppFace">🧙</div>
+      <div class="opp-info">
+        <div class="opp-name" id="oppName">Opponent</div>
+        <div class="opp-bubble" id="oppBubble"></div>
+      </div>
+    </div>
+
     <div class="status" id="status"></div>
 
     <div class="timer" id="timer" style="display:none">
@@ -446,15 +497,16 @@
     </div>
 
     <div>
-      <label for="level">Difficulty</label>
-      <select id="level">
+      <label>Choose your opponent</label>
+      <div class="char-grid" id="charGrid"></div>
+      <div class="levelinfo" id="levelinfo"></div>
+      <select id="level" style="display:none">
         <option value="0">Level 1 · Beginner</option>
         <option value="1">Level 2 · Casual</option>
         <option value="2" selected>Level 3 · Intermediate</option>
         <option value="3">Level 4 · Advanced</option>
         <option value="4">Level 5 · Master</option>
       </select>
-      <div class="levelinfo" id="levelinfo"></div>
     </div>
 
     <div>
@@ -993,6 +1045,10 @@ const timerBar = document.getElementById("timerBar");
 const timerText = document.getElementById("timerText");
 const levelEl = document.getElementById("level");
 const levelInfoEl = document.getElementById("levelinfo");
+const charGridEl = document.getElementById("charGrid");
+const oppFaceEl = document.getElementById("oppFace");
+const oppNameEl = document.getElementById("oppName");
+const oppBubbleEl = document.getElementById("oppBubble");
 const sideEl = document.getElementById("side");
 const promoOverlay = document.getElementById("promoOverlay");
 const promoBox = document.getElementById("promoBox");
@@ -1077,6 +1133,7 @@ function resetGame() {
   moveTimes = [];
   pressureCount = 0;
   render();
+  say("greet");
   maybeAiTurn();
 }
 
@@ -1518,6 +1575,7 @@ function playMove(m) {
   const moverColor = st.turn === "w" ? "b" : "w";
   const isComputer = moverColor !== humanColor;
   playMoveSound(!!m.capture, checking, isComputer);
+  reactToMove(m, isComputer, checking);
   render();
 }
 
@@ -1536,6 +1594,112 @@ function undo() {
   promoOverlay.style.display = "none";
   render();
   maybeAiTurn(); // covers the case where all moves were undone and AI plays first
+}
+
+/* ---- Magical opponents: pick a creature to play against ---- */
+const CHARACTERS = [
+  { short: "Pip", name: "Pip the Sprite", emoji: "🧚", level: 0, color: "#3fae6b",
+    blurb: "A giggly forest sprite just learning the game. Blunders happily — perfect for your first wins.",
+    greet: ["Tee-hee! Let's play, friend!", "Ooh, a game! I'm not very good though!"],
+    capture: ["Hee hee, I nabbed your {p}!", "Ooh, a shiny {p} for me!", "Gotcha {p}! Tee-hee!"],
+    check: ["Eep — check!", "Your king! Watch out!"],
+    win: ["I... I won? Yaaay!", "Sparkles for me!"],
+    lose: ["Aww, you got me! Well played!", "No fair, you're good!"],
+    lostPiece: ["Hey! My {p}!", "Aww, not my {p}!"],
+    idle: ["La la la~", "Flutter flutter!"] },
+  { short: "Grog", name: "Grog the Goblin", emoji: "👺", level: 1, color: "#c8632a",
+    blurb: "A cheeky, greedy goblin. Snatches loose pieces but makes plenty of mistakes.",
+    greet: ["Heh heh, fresh meat!", "Grog smash... gently."],
+    capture: ["Heh! Grog take your {p}!", "Mine now — that {p} is Grog's!", "Snatch! Bye-bye {p}!"],
+    check: ["Yer king's in trouble!", "Check! Heh heh."],
+    win: ["Grog WINS! Stomp stomp!", "Hah! Too easy!"],
+    lose: ["Bah! You cheated... somehow!", "Grog... lost? Grr!"],
+    lostPiece: ["Oi! That was Grog's {p}!", "Give back my {p}!"],
+    idle: ["Heh heh heh...", "Grog thinking. Hard."] },
+  { short: "Ember", name: "Ember the Drake", emoji: "🐲", level: 2, color: "#d23b3b",
+    blurb: "A young fire-drake with real bite. Punishes loose play with sharp tactics.",
+    greet: ["Let us duel, challenger.", "I smell fear... and pawns."],
+    capture: ["Your {p} is ash now!", "I devour your {p}!", "Burned! Farewell, {p}."],
+    check: ["Your king feels the heat!", "Check — and it burns."],
+    win: ["You are scorched. I win.", "Reduced to embers!"],
+    lose: ["Impossible... a worthy foe.", "You have doused my flame."],
+    lostPiece: ["My {p}! You'll pay for that.", "Grr — my {p} is gone."],
+    idle: ["*smoke curls*", "Hmmm..."] },
+  { short: "Sylvara", name: "Sylvara the Enchantress", emoji: "🧝‍♀️", level: 3, color: "#7d4fd6",
+    blurb: "An elven enchantress of deep cunning. Strong tactics and patient plans.",
+    greet: ["Shall we weave a little magic?", "Mind your pieces, dear."],
+    capture: ["Your {p} bows to me.", "A graceful capture — your {p} is mine.", "Enchanted away: your {p}."],
+    check: ["Your king is ensnared. Check.", "The spell tightens — check."],
+    win: ["The pattern is complete. I win.", "Checkmate, woven perfectly."],
+    lose: ["Cleverly unravelled. Bravo.", "You broke my spell. Impressive."],
+    lostPiece: ["You took my {p}? Bold.", "My {p}... a fair trade, perhaps."],
+    idle: ["*whispers an incantation*", "Patience, patience..."] },
+  { short: "Zarûk", name: "Zarûk the Archmage", emoji: "🧙", level: 4, color: "#3c4fb0",
+    blurb: "The grand archmage. Deep calculation and merciless precision. Bring your best.",
+    greet: ["You dare challenge the Archmage?", "I have foreseen this game."],
+    capture: ["Foolish — your {p} is forfeit!", "The arcane claims your {p}!", "As foretold: your {p} falls."],
+    check: ["Your king kneels before me. Check.", "Check. Resistance is futile."],
+    win: ["Checkmate. As it was written.", "You never stood a chance."],
+    lose: ["What?! This was not foreseen...", "Astonishing. You bested me."],
+    lostPiece: ["You strike my {p}? Insolent!", "A lucky blow on my {p}."],
+    idle: ["*the air crackles with power*", "Calculating your doom..."] },
+];
+let selectedChar = 2;
+
+function renderCharGrid() {
+  charGridEl.innerHTML = "";
+  CHARACTERS.forEach((c, i) => {
+    const card = document.createElement("div");
+    card.className = "char-card" + (i === selectedChar ? " selected" : "");
+    card.innerHTML = `<div class="char-emoji" style="--cc:${c.color}">${c.emoji}</div>` +
+                     `<div class="char-name">${c.short}</div><div class="char-lvl">Lvl ${c.level + 1}</div>`;
+    card.title = c.name + " — " + c.blurb;
+    card.addEventListener("click", () => selectCharacter(i));
+    charGridEl.appendChild(card);
+  });
+}
+
+function applyOpponentDisplay() {
+  const c = CHARACTERS[selectedChar];
+  oppFaceEl.textContent = c.emoji;
+  oppFaceEl.style.setProperty("--opp-color", c.color);
+  oppNameEl.textContent = c.name;
+}
+
+function selectCharacter(i) {
+  selectedChar = i;
+  levelEl.value = CHARACTERS[i].level;
+  levelInfoEl.textContent = CHARACTERS[i].blurb;
+  renderCharGrid();
+  applyOpponentDisplay();
+  resetGame();          // a fresh game against the new opponent
+}
+
+let speechTimer = null;
+function say(category, piece) {
+  const c = CHARACTERS[selectedChar];
+  const lines = c[category];
+  if (!lines || !lines.length) return;
+  let text = lines[Math.floor(Math.random() * lines.length)];
+  if (piece) text = text.replace(/\{p\}/g, piece);
+  oppBubbleEl.textContent = text;
+  oppBubbleEl.classList.add("show");
+  clearTimeout(speechTimer);
+  speechTimer = setTimeout(() => oppBubbleEl.classList.remove("show"), 4500);
+}
+
+// React to a move that was just played (st.turn has already flipped).
+function reactToMove(m, isComputer, checking) {
+  const piece = m.capture ? PIECE_NAME[m.capture.toUpperCase()] : null;
+  if (isComputer) {
+    if (gameOver && gameOver.winnerColor && gameOver.winnerColor !== humanColor) say("win");
+    else if (piece) say("capture", piece);
+    else if (checking) say("check");
+    else if (Math.random() < 0.14) say("idle");
+  } else {
+    if (gameOver && gameOver.winnerColor === humanColor) say("lose");
+    else if (piece) say("lostPiece", piece);
+  }
 }
 
 /* ---- Move timer: you have MOVE_TIME seconds per turn or you lose ---- */
@@ -1579,6 +1743,7 @@ function onTimeout() {
     endSub: "You ran out of time — the computer wins. Move within " + MOVE_TIME + " seconds next time!",
   };
   playMoveSound(false, true, true);
+  say("win");
   render();
 }
 
@@ -1733,11 +1898,13 @@ function renderStatus() {
   if (gameOver) {
     statusEl.innerHTML = `<span>🏁 ${gameOver.result}</span>`;
   } else if (thinking) {
-    statusEl.innerHTML = `<span class="spinner"></span><span>Computer is thinking…</span>`;
+    const nm = CHARACTERS[selectedChar].short;
+    statusEl.innerHTML = `<span class="spinner"></span><span>${nm} is thinking…</span>`;
   } else {
     const yours = st.turn === humanColor;
     const check = inCheck(st, st.turn) ? " — check!" : "";
-    statusEl.innerHTML = `<span>${yours ? "Your move" : "Computer's move"} (${st.turn === "w" ? "White" : "Black"})${check}</span>`;
+    const who = yours ? "Your move" : CHARACTERS[selectedChar].short + "'s move";
+    statusEl.innerHTML = `<span>${who} (${st.turn === "w" ? "White" : "Black"})${check}</span>`;
   }
 }
 
@@ -1907,7 +2074,10 @@ document.getElementById("newtip").addEventListener("click", () => {
   renderTip();
 });
 
-levelInfoEl.textContent = LEVELS[parseInt(levelEl.value, 10)].info;
+renderCharGrid();
+applyOpponentDisplay();
+levelEl.value = CHARACTERS[selectedChar].level;
+levelInfoEl.textContent = CHARACTERS[selectedChar].blurb;
 resetGame();
 </script>
 </body>
