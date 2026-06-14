@@ -214,6 +214,13 @@
     padding: 12px 14px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
   }
+  .rv-accuracy {
+    display: flex; align-items: baseline; justify-content: center; gap: 8px;
+    background: rgba(0,0,0,0.28); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .rv-acc-num { font-size: 38px; font-weight: 900; line-height: 1; color: var(--accent); }
+  .rv-acc-lbl { font-size: 14px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
   .rv-summary { font-size: 12.5px; line-height: 1.5; color: var(--muted); margin-bottom: 10px; }
   .rv-summary b { color: var(--accent); }
   .rv-comment {
@@ -492,6 +499,10 @@
     </div>
 
     <div class="reviewbar" id="reviewBar" style="display:none">
+      <div class="rv-accuracy" id="rvAccuracy">
+        <span class="rv-acc-num" id="rvAccNum">–</span>
+        <span class="rv-acc-lbl">accuracy</span>
+      </div>
       <div class="rv-summary" id="reviewSummary"></div>
       <div class="rv-comment" id="reviewComment"></div>
       <div class="rv-nav">
@@ -1496,6 +1507,9 @@ function finishReview(stats, evalSeries) {
     intro.short = intro.long = `<span class="rv-move">Nothing major to review</span>You played a clean game — no big mistakes or missed chances. Nicely done!`;
   }
   reviewSummary.innerHTML = summary;
+  const accNum = document.getElementById("rvAccNum");
+  accNum.textContent = acc + "%";
+  accNum.style.color = acc >= 85 ? "#7bd88f" : acc >= 70 ? "#9ec7ff" : acc >= 50 ? "#ffd479" : "#ff8a7a";
   reviewOverlay.style.display = "none";
   reviewMode = true;
   reviewIdx = 0;
