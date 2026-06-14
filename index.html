@@ -271,6 +271,24 @@
   @media (max-width: 700px) {
     .panel { width: calc(8 * var(--sq)); }
   }
+  /* Score bar: trophies + level */
+  .scorebar { display: flex; gap: 10px; }
+  .score-cell {
+    flex: 1; background: rgba(0,0,0,0.25); border-radius: 8px; padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .score-big { font-size: 18px; font-weight: 800; color: var(--accent); }
+  .score-lbl { font-size: 11px; color: var(--muted); }
+  .xp-track { height: 5px; background: rgba(255,255,255,0.12); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .xp-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width 0.4s; }
+  .end-score {
+    font-size: 13px; line-height: 1.6; color: var(--text);
+    background: rgba(0,0,0,0.22); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; text-align: left;
+  }
+  .end-score .es-total { font-size: 17px; font-weight: 800; color: var(--accent); }
+  .end-score .es-row { display: flex; justify-content: space-between; gap: 12px; }
+  .end-score .es-up { color: #7bd88f; } .end-score .es-down { color: #ff8a7a; }
+
   /* Opponent banner + speech bubble */
   .opponent { display: flex; align-items: center; gap: 12px; }
   .opp-face {
@@ -421,6 +439,7 @@
           <div class="end-emoji" id="endEmoji">🎉</div>
           <div class="end-title" id="endTitle">Well done!</div>
           <div class="end-sub" id="endSub"></div>
+          <div class="end-score" id="endScore"></div>
           <div class="end-btns">
             <button class="btn" id="reviewBtn">📋 Review my game</button>
             <button class="btn primary" id="endNewGame">Play New Game</button>
@@ -474,6 +493,15 @@
   </div>
 
   <div class="panel">
+    <div class="scorebar" id="scorebar">
+      <div class="score-cell"><span class="score-big" id="trophyCount">0</span><span class="score-lbl"><span id="rankName">Pawn</span> 🏆</span></div>
+      <div class="score-cell">
+        <span class="score-big" id="levelNum">Lv 1</span>
+        <span class="score-lbl"><span id="xpText">0 XP</span></span>
+        <div class="xp-track"><div class="xp-fill" id="xpFill"></div></div>
+      </div>
+    </div>
+
     <div class="opponent" id="opponent">
       <div class="opp-face" id="oppFace">🧙</div>
       <div class="opp-info">
@@ -1050,6 +1078,12 @@ const charGridEl = document.getElementById("charGrid");
 const oppFaceEl = document.getElementById("oppFace");
 const oppNameEl = document.getElementById("oppName");
 const oppBubbleEl = document.getElementById("oppBubble");
+const trophyCountEl = document.getElementById("trophyCount");
+const rankNameEl = document.getElementById("rankName");
+const levelNumEl = document.getElementById("levelNum");
+const xpTextEl = document.getElementById("xpText");
+const xpFillEl = document.getElementById("xpFill");
+const endScoreEl = document.getElementById("endScore");
 const sideEl = document.getElementById("side");
 const promoOverlay = document.getElementById("promoOverlay");
 const promoBox = document.getElementById("promoBox");
@@ -1133,6 +1167,7 @@ function resetGame() {
   reviewSteps = [];
   moveTimes = [];
   pressureCount = 0;
+  pointsAwarded = false;
   render();
   say("greet");
   maybeAiTurn();
@@ -1528,6 +1563,22 @@ function showEndOverlay() {
   endEmoji.textContent = emoji;
   endTitle.textContent = title;
   endSub.textContent = sub;
+  // Per-game score breakdown + trophy/XP changes.
+  if (lastScore) {
+    const s = lastScore;
+    const tro = s.realTrophyChange >= 0
+      ? `<span class="es-up">+${s.realTrophyChange} 🏆</span>`
+      : `<span class="es-down">${s.realTrophyChange} 🏆</span>`;
+    endScoreEl.innerHTML =
+      `<div class="es-row"><span>This game</span><span class="es-total">${s.score} pts</span></div>` +
+      `<div class="es-row"><span>Result + captures + speed</span><span>${s.base} + ${s.capPts} + ${s.speedBonus}</span></div>` +
+      `<div class="es-row"><span>Difficulty bonus</span><span>×${s.diffMult.toFixed(2)}</span></div>` +
+      `<div class="es-row"><span>Trophies</span><span>${tro} (${trophies})</span></div>` +
+      `<div class="es-row"><span>XP earned</span><span class="es-up">+${s.xpGain}</span> </div>`;
+    endScoreEl.style.display = "block";
+  } else {
+    endScoreEl.style.display = "none";
+  }
   // Highlight "Review my game" after a loss; otherwise highlight New Game.
   const lost = gameOver.winnerColor && gameOver.winnerColor !== humanColor;
   const reviewBtn = document.getElementById("reviewBtn");
@@ -1613,6 +1664,7 @@ function playMove(m) {
   repMap[key] = (repMap[key] || 0) + 1;
   m.repKey = key;
   checkGameEnd();
+  if (gameOver) awardPoints(gameOver.winnerColor ? (gameOver.winnerColor === humanColor ? "win" : "loss") : "draw");
   const checking = inCheck(st, st.turn);
   if (checking) nota += gameOver ? "#" : "+";
   m.nota = nota;
@@ -1642,6 +1694,61 @@ function undo() {
   promoOverlay.style.display = "none";
   render();
   maybeAiTurn(); // covers the case where all moves were undone and AI plays first
+}
+
+/* ---- Points: per-game arcade score -> lifetime XP + trophies ---- */
+const SCORE_VAL = { P: 10, N: 30, B: 30, R: 50, Q: 90 };
+const RANKS = [[0, "Pawn"], [120, "Knight"], [300, "Bishop"], [600, "Rook"], [1000, "Queen"], [1600, "Grandmaster"]];
+let trophies = 0, xp = 0, pointsAwarded = false, lastScore = null;
+try { trophies = parseInt(localStorage.getItem("chessTrophies")) || 0; xp = parseInt(localStorage.getItem("chessXP")) || 0; } catch (e) {}
+
+function rankFor(t) { let r = "Pawn"; for (const [th, name] of RANKS) if (t >= th) r = name; return r; }
+function levelFor(x) { return Math.floor(x / 1000) + 1; }
+
+function updateScoreUI() {
+  trophyCountEl.textContent = trophies;
+  rankNameEl.textContent = rankFor(trophies);
+  levelNumEl.textContent = "Lv " + levelFor(xp);
+  xpTextEl.textContent = (xp % 1000) + " / 1000 XP";
+  xpFillEl.style.width = ((xp % 1000) / 10) + "%";
+}
+
+// Points of enemy material you captured this game (board vs the starting set).
+function capturedPoints() {
+  const aiColor = humanColor === "w" ? "b" : "w";
+  const start = { P: 8, N: 2, B: 2, R: 2, Q: 1 };
+  const now = { P: 0, N: 0, B: 0, R: 0, Q: 0 };
+  for (const p of st.board) {
+    if (!p || colorOf(p) !== aiColor) continue;
+    const up = p.toUpperCase();
+    if (up !== "K") now[up]++;
+  }
+  let pts = 0;
+  for (const t of ["P", "N", "B", "R", "Q"]) pts += Math.max(0, start[t] - now[t]) * SCORE_VAL[t];
+  return pts;
+}
+
+function awardPoints(outcome) {
+  if (pointsAwarded) return;
+  pointsAwarded = true;
+  const level = CHARACTERS[selectedChar].level;
+  const diffMult = 1 + level * 0.3;                 // tougher foes are worth more
+  const base = outcome === "win" ? 1000 : outcome === "draw" ? 400 : 150;
+  const capPts = capturedPoints();
+  const avg = moveTimes.length ? moveTimes.reduce((a, b) => a + b, 0) / moveTimes.length : 20;
+  const speedBonus = Math.max(0, Math.round((20 - avg) * 12));
+  const score = Math.round((base + capPts + speedBonus) * diffMult);
+
+  const dTrophies = outcome === "win" ? (15 + level * 15) : outcome === "draw" ? 5 : -15;
+  const before = trophies;
+  trophies = Math.max(0, trophies + dTrophies);
+  const realTrophyChange = trophies - before;
+  const xpGain = Math.round(score / 5);
+  xp += xpGain;
+  try { localStorage.setItem("chessTrophies", trophies); localStorage.setItem("chessXP", xp); } catch (e) {}
+
+  lastScore = { outcome, base, capPts, speedBonus, diffMult, score, realTrophyChange, xpGain };
+  updateScoreUI();
 }
 
 /* ---- Magical opponents: pick a creature to play against ---- */
@@ -1888,6 +1995,7 @@ function onTimeout() {
   };
   playMoveSound(false, true, true);
   say("win");
+  awardPoints("loss");
   render();
 }
 
@@ -2220,6 +2328,7 @@ document.getElementById("newtip").addEventListener("click", () => {
 
 renderCharGrid();
 applyOpponentDisplay();
+updateScoreUI();
 levelEl.value = CHARACTERS[selectedChar].level;
 levelInfoEl.textContent = CHARACTERS[selectedChar].blurb;
 resetGame();
