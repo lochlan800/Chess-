@@ -643,6 +643,7 @@
     <div class="tipbox">
       <div class="tip-head">
         <span>💡 Coach tips</span>
+        <button class="tip-btn" id="coachShow" title="Show a good move" style="display:none">👁 Show me</button>
         <button class="tip-btn" id="newtip" title="Show another tip">New tip ↻</button>
       </div>
       <div class="tip info" id="tip"></div>
@@ -1242,6 +1243,7 @@ const endSub = document.getElementById("endSub");
 let st, history, repMap, gameOver, selected, legalForSelected, humanColor, thinking, pendingPromo;
 let tutorialMode = false;   // weakest random AI + suppress points during the practice game
 let tutIdx = 0, tutState = null;
+let coachHint = null;       // {from,to} suggested move arrow for the "Show me" coach
 const startOverlay = document.getElementById("startOverlay");
 const tutOverlay = document.getElementById("tutOverlay");
 const tutBoardEl = document.getElementById("tutBoard");
@@ -1316,6 +1318,7 @@ function resetGame() {
   pressureCount = 0;
   pointsAwarded = false;
   liveEval = 0;
+  coachHint = null;
   render();
   say("greet");
   maybeAiTurn();
@@ -1837,6 +1840,7 @@ function checkGameEnd() {
 }
 
 function playMove(m) {
+  coachHint = null;   // any pending "Show me" arrow is consumed by moving
   // Record your move timing (for the review statistics).
   if (st.turn === humanColor && timerRunning) {
     moveTimes.push(moveTimeLimit - timeLeft);
@@ -2453,8 +2457,15 @@ function tutBack() { if (tutIdx > 0) loadLesson(tutIdx - 1); }
 function tutRetry() { loadLesson(tutIdx); }
 function startCoachedGame() {
   tutOverlay.style.display = "none";
+  // Practice against Pip the Sprite (the friendliest face), but playing worse
+  // than normal via tutorialMode's random moves.
+  selectedChar = 0;                       // CHARACTERS[0] = Pip the Sprite
+  levelEl.value = CHARACTERS[0].level;
+  renderCharGrid();
+  applyOpponentDisplay();
   tutorialMode = true;
   lastScore = null;
+  coachHint = null;
   resetGame();
 }
 
@@ -2528,14 +2539,31 @@ function coachTip() {
 }
 
 function renderTip() {
-  const c = coachTip();
-  if (c) {
-    tipEl.className = "tip " + c.k;
-    tipEl.textContent = c.t;
+  if (coachHint && coachHint.text && tutorialMode && !gameOver && st.turn === humanColor) {
+    tipEl.className = "tip good";
+    tipEl.textContent = coachHint.text;
   } else {
-    tipEl.className = "tip info";
-    tipEl.textContent = GENERAL_TIPS[tipIndex % GENERAL_TIPS.length];
+    const c = coachTip();
+    if (c) { tipEl.className = "tip " + c.k; tipEl.textContent = c.t; }
+    else { tipEl.className = "tip info"; tipEl.textContent = GENERAL_TIPS[tipIndex % GENERAL_TIPS.length]; }
   }
+  // The "Show me" hint button is only offered in the coached practice game.
+  const showBtn = document.getElementById("coachShow");
+  if (showBtn) showBtn.style.display =
+    (tutorialMode && !reviewMode && !gameOver && !thinking && st.turn === humanColor) ? "" : "none";
+}
+
+// Suggest a strong move and draw an arrow to it (coach "Show me").
+function showCoachMove() {
+  if (!tutorialMode || gameOver || thinking || st.turn !== humanColor) return;
+  const scored = scoreAllMoves(st, 3, 400);
+  if (!scored.length) return;
+  const m = scored[0].m;
+  const what = m.capture
+    ? `take the ${PIECE_NAME[m.capture.toUpperCase()]}`
+    : `move your ${PIECE_NAME[m.piece.toUpperCase()]}`;
+  coachHint = { from: m.from, to: m.to, text: `Coach: try this — ${what}. Follow the arrow on the board!` };
+  render();
 }
 
 function renderStatus() {
@@ -2649,27 +2677,31 @@ function render() {
   // Show the move(s) under review as arrows: yellow = your move, green = the
   // engine's stronger move (drawn on the position you were deciding from).
   const arrowEl = document.getElementById("reviewArrow");
+  const center = s2 => {
+    const row = s2 >> 3, col = s2 & 7;
+    return { x: (flip ? 7 - col : col) + 0.5, y: (flip ? 7 - row : row) + 0.5 };
+  };
+  const arrow = (fromSq, toSq, color, head) => {
+    const a = center(fromSq), b = center(toSq);
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+    const tx = b.x - (dx / len) * 0.18, ty = b.y - (dy / len) * 0.18;
+    return `<line x1="${a.x}" y1="${a.y}" x2="${tx}" y2="${ty}" stroke="${color}" stroke-width="0.16" ` +
+           `stroke-linecap="round" marker-end="url(#${head})" opacity="0.92"/>`;
+  };
+  const marker = (id, color) =>
+    `<marker id="${id}" markerUnits="userSpaceOnUse" markerWidth="0.55" markerHeight="0.55" refX="0.27" refY="0.27" orient="auto">` +
+    `<path d="M0,0 L0.55,0.27 L0,0.55 Z" fill="${color}"/></marker>`;
   if (reviewing && last && last.from >= 0 && last.to >= 0) {
-    const center = s2 => {
-      const row = s2 >> 3, col = s2 & 7;
-      return { x: (flip ? 7 - col : col) + 0.5, y: (flip ? 7 - row : row) + 0.5 };
-    };
-    const arrow = (fromSq, toSq, color, head) => {
-      const a = center(fromSq), b = center(toSq);
-      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
-      const tx = b.x - (dx / len) * 0.18, ty = b.y - (dy / len) * 0.18;
-      return `<line x1="${a.x}" y1="${a.y}" x2="${tx}" y2="${ty}" stroke="${color}" stroke-width="0.16" ` +
-             `stroke-linecap="round" marker-end="url(#${head})" opacity="0.92"/>`;
-    };
-    const marker = (id, color) =>
-      `<marker id="${id}" markerUnits="userSpaceOnUse" markerWidth="0.55" markerHeight="0.55" refX="0.27" refY="0.27" orient="auto">` +
-      `<path d="M0,0 L0.55,0.27 L0,0.55 Z" fill="${color}"/></marker>`;
     let svg = `<defs>${marker("rvhead", "#f6c945")}${marker("rvbest", "#37d67a")}</defs>`;
     svg += arrow(last.from, last.to, "#f6c945", "rvhead");
     if (last.bestFrom >= 0 && last.bestTo >= 0 &&
         !(last.bestFrom === last.from && last.bestTo === last.to))
       svg += arrow(last.bestFrom, last.bestTo, "#37d67a", "rvbest");
     arrowEl.innerHTML = svg;
+    arrowEl.style.display = "block";
+  } else if (!reviewMode && coachHint && !gameOver && st.turn === humanColor) {
+    arrowEl.innerHTML = `<defs>${marker("chead", "#39d3ff")}</defs>` +
+                        arrow(coachHint.from, coachHint.to, "#39d3ff", "chead");
     arrowEl.style.display = "block";
   } else {
     arrowEl.style.display = "none";
@@ -2726,6 +2758,7 @@ document.getElementById("newtip").addEventListener("click", () => {
   tipIndex = (tipIndex + 1) % GENERAL_TIPS.length;
   renderTip();
 });
+document.getElementById("coachShow").addEventListener("click", showCoachMove);
 
 renderCharGrid();
 applyOpponentDisplay();
