@@ -1259,6 +1259,7 @@ let tutorialMode = false;   // weakest random AI + suppress points during the pr
 let tutIdx = 0, tutState = null;
 let coachHint = null;       // {from,to} suggested move arrow for the "Show me" coach
 let awaitingStart = false;  // board is locked until the player picks an opponent
+let aiToken = 0;            // invalidates stale/duplicate scheduled AI moves
 const startOverlay = document.getElementById("startOverlay");
 const tutOverlay = document.getElementById("tutOverlay");
 const tutBoardEl = document.getElementById("tutBoard");
@@ -1320,6 +1321,7 @@ function resetGame() {
   selected = -1;
   legalForSelected = [];
   thinking = false;
+  aiToken++;            // cancel any AI move still scheduled from a previous game
   pendingPromo = null;
   humanColor = sideEl.value;
   promoOverlay.style.display = "none";
@@ -2269,14 +2271,22 @@ function onTimeout() {
 }
 
 function maybeAiTurn() {
-  if (awaitingStart || gameOver || st.turn === humanColor) return;
+  // `thinking` guard stops a second AI move being scheduled on top of one
+  // already in flight (which was causing turns to be skipped).
+  if (awaitingStart || gameOver || thinking || st.turn === humanColor) return;
+  const tok = ++aiToken;                          // this scheduling's identity
+  const stale = () => tok !== aiToken;            // a reset/new game invalidates it
   if (tutorialMode) {
     // Weakest possible opponent: a uniformly random legal move.
     const moves = legalMoves(st);
     if (!moves.length) { render(); return; }
     const m = moves[Math.floor(Math.random() * moves.length)];
     thinking = true; renderStatus();
-    setTimeout(() => { thinking = false; playMove(m); }, 300);
+    setTimeout(() => {
+      if (stale()) return;
+      thinking = false;
+      if (st.turn !== humanColor && !gameOver) playMove(m); else render();
+    }, 300);
     return;
   }
   const levelIdx = parseInt(levelEl.value, 10);
@@ -2287,13 +2297,15 @@ function maybeAiTurn() {
   const ply = history.length;
   // Let the thinking indicator paint before the (blocking) search begins.
   setTimeout(() => {
+    if (stale()) return;
     const m = chooseAiMove(st, levelIdx, ply);
     // Pad to the level's thinking time so weaker levels move quickly and
     // stronger levels visibly take their full calculation budget.
     const wait = Math.max(0, minThink - (Date.now() - start));
     setTimeout(() => {
+      if (stale()) return;
       thinking = false;
-      if (m) playMove(m);
+      if (m && st.turn !== humanColor && !gameOver) playMove(m);
       else render();
     }, wait);
   }, 60);
