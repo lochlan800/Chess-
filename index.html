@@ -364,6 +364,24 @@
   }
   .score-big { font-size: 18px; font-weight: 800; color: var(--accent); }
   .score-lbl { font-size: 11px; color: var(--muted); }
+  .game-pts {
+    font-size: 13px; color: var(--muted); text-align: center;
+    background: rgba(0,0,0,0.22); border-radius: 8px; padding: 6px 10px;
+  }
+  .game-pts b { color: #ffe27a; font-size: 15px; }
+  /* Points that float up off the board square you moved to */
+  .board-pop {
+    position: absolute; left: 0; right: 0; top: 16%; text-align: center;
+    font-weight: 900; font-size: calc(var(--sq, 60px) * 0.34); color: #ffe27a;
+    text-shadow: 0 1px 3px #000, 0 0 2px #000; pointer-events: none; z-index: 5;
+    animation: boardpop 1s ease-out forwards;
+  }
+  @keyframes boardpop {
+    0%   { opacity: 0; transform: translateY(6px) scale(0.6); }
+    20%  { opacity: 1; transform: translateY(0) scale(1.15); }
+    65%  { opacity: 1; transform: translateY(-10px) scale(1); }
+    100% { opacity: 0; transform: translateY(-26px) scale(1); }
+  }
   .xp-track { height: 5px; background: rgba(255,255,255,0.12); border-radius: 3px; margin-top: 4px; overflow: hidden; }
   .xp-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width 0.4s; }
   .end-score {
@@ -645,6 +663,7 @@
     </div>
 
     <div class="status" id="status"></div>
+    <div class="game-pts" id="gamePts">🎯 <b id="gamePtsNum">0</b> pts this game</div>
 
     <div class="timer" id="timer" style="display:none">
       <div class="timer-track"><div class="timer-bar" id="timerBar"></div></div>
@@ -1356,6 +1375,8 @@ function resetGame() {
   pointsAwarded = false;
   liveEval = 0;
   coachHint = null;
+  gameScore = 0;
+  renderGamePts();
   render();
   say("greet");
   maybeAiTurn();
@@ -1800,6 +1821,7 @@ function showEndOverlay() {
       : `<span class="es-down">${s.realTrophyChange} 🏆</span>`;
     endScoreEl.innerHTML =
       `<div class="es-row"><span>This game</span><span class="es-total">${s.score} pts</span></div>` +
+      `<div class="es-row"><span>Points earned in play</span><span class="es-up">🎯 ${s.gameScore || 0}</span></div>` +
       `<div class="es-row"><span>Result + captures + speed</span><span>${s.base} + ${s.capPts} + ${s.speedBonus}</span></div>` +
       `<div class="es-row"><span>Difficulty bonus</span><span>×${s.diffMult.toFixed(2)}</span></div>` +
       `<div class="es-row"><span>Trophies</span><span>${tro} (${trophies})</span></div>` +
@@ -1908,6 +1930,7 @@ function playMove(m) {
   playMoveSound(!!m.capture, checking, isComputer);
   reactToMove(m, isComputer, checking);
   render();
+  if (!isComputer && !tutorialMode) awardMovePoints(m);   // live points pop on your moves
 }
 
 function undo() {
@@ -1931,6 +1954,7 @@ function undo() {
 const SCORE_VAL = { P: 10, N: 30, B: 30, R: 50, Q: 90 };
 const RANKS = [[0, "Pawn"], [120, "Knight"], [300, "Bishop"], [600, "Rook"], [1000, "Queen"], [1600, "Grandmaster"]];
 let trophies = 0, xp = 0, pointsAwarded = false, lastScore = null;
+let gameScore = 0;          // points earned in the current game (live, on-board pops)
 try { trophies = parseInt(localStorage.getItem("chessTrophies")) || 0; xp = parseInt(localStorage.getItem("chessXP")) || 0; } catch (e) {}
 
 function rankFor(t) { let r = "Pawn"; for (const [th, name] of RANKS) if (t >= th) r = name; return r; }
@@ -1979,8 +2003,33 @@ function awardPoints(outcome) {
   xp += xpGain;
   try { localStorage.setItem("chessTrophies", trophies); localStorage.setItem("chessXP", xp); } catch (e) {}
 
-  lastScore = { outcome, base, capPts, speedBonus, diffMult, score, realTrophyChange, xpGain };
+  lastScore = { outcome, base, capPts, speedBonus, diffMult, score, realTrophyChange, xpGain, gameScore };
   animateScoreGain(before, xp - xpGain, realTrophyChange, xpGain);
+}
+
+// Live per-move points: a "+N" floats off the square you moved to, and the
+// running game tally ticks up. (Human moves only; not in the practice game.)
+function renderGamePts() {
+  const el = document.getElementById("gamePtsNum");
+  if (el) el.textContent = gameScore;
+  const box = document.getElementById("gamePts");
+  if (box) box.style.display = tutorialMode ? "none" : "";
+}
+function popBoardPoints(sq, text) {
+  const cell = boardEl.querySelector('[data-sq="' + sq + '"]');
+  if (!cell) return;
+  const s = document.createElement("div");
+  s.className = "board-pop";
+  s.textContent = text;
+  cell.appendChild(s);
+  setTimeout(() => s.remove(), 1000);
+}
+function awardMovePoints(m) {
+  const pts = 5 + (m.capture ? SCORE_VAL[m.capture.toUpperCase()] : 0);
+  const from = gameScore;
+  gameScore += pts;
+  popBoardPoints(m.to, "+" + pts);
+  animateCount(v => { const el = document.getElementById("gamePtsNum"); if (el) el.textContent = v; }, from, gameScore, 500);
 }
 
 // Count the score bar up to the new totals and pop a floating "+N" so the
@@ -2755,6 +2804,7 @@ function render() {
         rk.textContent = 8 - r;
         cell.appendChild(rk);
       }
+      cell.dataset.sq = sq;
       cell.addEventListener("click", () => onSquareClick(sq));
       boardEl.appendChild(cell);
     }
