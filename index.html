@@ -212,6 +212,8 @@
   .rv-comment .rv-move { font-weight: 700; display: block; margin-bottom: 3px; }
   .rv-comment .rv-fix { display: block; margin-top: 6px; color: #b8e994; font-size: 13px; }
   .rv-comment .rv-fix::before { content: "✅ "; }
+  .rv-comment .rv-long-p { display: block; margin-top: 8px; font-size: 13px; line-height: 1.5; }
+  .rv-comment .rv-long-p b { color: var(--accent); }
   .rv-more {
     display: block; margin-top: 8px; font-size: 12px; font-weight: 700;
     color: var(--accent); background: none; border: none; cursor: pointer; padding: 0;
@@ -1202,16 +1204,45 @@ function reviewReason(r) {
            marks: [] };
 }
 
-// Commentary for one of your moves. Returns an `influence` score so the review
-// can show only the moves that actually mattered.
-function moveComment(r, grade) {
+// Put a centipawn score (from your perspective) into words.
+function evalPhrase(cp) {
+  const p = cp / 100;
+  if (p > 2.5) return `winning for you (about +${p.toFixed(1)})`;
+  if (p > 1.0) return `clearly better for you (about +${p.toFixed(1)})`;
+  if (p > 0.4) return `slightly better for you (about +${p.toFixed(1)})`;
+  if (p >= -0.4) return `roughly equal`;
+  if (p >= -1.0) return `slightly worse for you (about ${p.toFixed(1)})`;
+  if (p >= -2.5) return `clearly worse for you (about ${p.toFixed(1)})`;
+  return `losing for you (about ${p.toFixed(1)})`;
+}
+
+// Commentary for one of your moves. `extra` carries deeper analysis used by the
+// in-depth (long) view: {actualSc, bestSc, threatPiece, bestCaptures, bestCheck}.
+function moveComment(r, grade, extra) {
   if (grade) {
     const reason = reviewReason(r);
     const label = grade === "blunder" ? "❌ Blunder" : grade === "mistake" ? "⚠️ Mistake" : "🤔 Inaccuracy";
     const head = `<span class="rv-move">Move ${r.moveNum}. Your move (yellow arrow) — ${label}</span>`;
+
+    const P = []; // in-depth paragraphs
+    P.push(`<b>What happened.</b> ${reason.detail}`);
+    if (extra) {
+      P.push(`<b>How it changed the game.</b> After your move the position is ${evalPhrase(extra.actualSc)}. ` +
+             `The stronger move (green arrow) would have kept it ${evalPhrase(extra.bestSc)} — a swing of about ${(r.loss / 100).toFixed(1)} pawns.`);
+      if (r.allowedMate)
+        P.push(`<b>The danger.</b> Worse still, it allows the computer to force checkmate, so material no longer matters — the king is the problem.`);
+      else if (extra.threatPiece)
+        P.push(`<b>The threat.</b> Right away the computer can win your ${extra.threatPiece}; that is the main thing your move overlooked.`);
+      let why = "it keeps your pieces safe and your position solid";
+      if (extra.bestCaptures) why = `it wins the ${extra.bestCaptures} (or equivalent material)`;
+      else if (extra.bestCheck) why = "it gives check, seizing the initiative before the computer can act";
+      P.push(`<b>The better idea.</b> The green arrow is stronger because ${why}. Picture that move instead of the one you chose.`);
+    }
+    P.push(`<b>Take this away.</b> ${reason.fix}`);
+    const long = head + P.map(p => `<span class="rv-long-p">${p}</span>`).join("");
+
     return { grade, marks: reason.marks, influence: r.allowedMate ? 1e6 : r.loss,
-             short: head + reason.short,
-             long: head + reason.detail + `<span class="rv-fix">${reason.fix}</span>` };
+             short: head + reason.short, long };
   }
   // Good move — only treat it as influential if it won a piece for free.
   let why = "A safe, sensible choice.";
@@ -1256,12 +1287,30 @@ function startReview() {
                                        (e.m.promo || null) === (mv.promo || null)) || { sc: best.sc };
       const loss = Math.max(0, best.sc - actual.sc);
       const allowedMate = actual.sc <= -90000;
-      const beforeBoard = s.board.slice();
-      makeMove(s, mv);
-      const r = { moveNum, color: humanSide, played: mv.nota, bestMove: best.m, loss, allowedMate,
-                  beforeBoard, afterBoard: s.board.slice(), captured: mv.capture,
-                  captureSq: captureSquare(mv), playedFrom: mv.from, playedTo: mv.to };
       const grade = gradeOf(loss, allowedMate);
+      const beforeBoard = s.board.slice();
+
+      // Deeper analysis for the in-depth view (only for flagged moves).
+      let extra = null, afterBoard;
+      if (grade) {
+        const bestCaptures = best.m.capture ? PIECE_NAME[best.m.capture.toUpperCase()] : null;
+        makeMove(s, best.m);
+        const bestCheck = inCheck(s, s.turn);
+        unmakeMove(s, best.m);
+        makeMove(s, mv);                 // advance the real game
+        afterBoard = s.board.slice();
+        const oppScored = scoreAllMoves(s, 2, 250);   // the computer's punishing reply
+        const threatPiece = oppScored[0] && oppScored[0].m.capture
+          ? PIECE_NAME[oppScored[0].m.capture.toUpperCase()] : null;
+        extra = { actualSc: actual.sc, bestSc: best.sc, threatPiece, bestCaptures, bestCheck };
+      } else {
+        makeMove(s, mv);
+        afterBoard = s.board.slice();
+      }
+
+      const r = { moveNum, color: humanSide, played: mv.nota, bestMove: best.m, loss, allowedMate,
+                  beforeBoard, afterBoard, captured: mv.capture,
+                  captureSq: captureSquare(mv), playedFrom: mv.from, playedTo: mv.to };
       stats.count++; stats.lossSum += Math.min(800, loss);
       if (grade === "blunder") stats.blunder++;
       else if (grade === "mistake") stats.mistake++;
@@ -1269,7 +1318,7 @@ function startReview() {
       else stats.good++;
       if (grade && (!stats.worst || (allowedMate ? 1e9 : loss) > (stats.worst.allowedMate ? 1e9 : stats.worst.loss)))
         stats.worst = r;
-      const c = moveComment(r, grade);
+      const c = moveComment(r, grade, extra);
       if (grade) {
         // Flagged move: show the position you decided from, with your move
         // (yellow arrow) and the engine's stronger move (green arrow).
