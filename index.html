@@ -267,6 +267,8 @@
   .tac-step { font-size: 12px; color: var(--accent); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; }
   .tac-title { font-size: 18px; font-weight: 800; margin: 3px 0 5px; }
   .tac-text { font-size: 13.5px; color: var(--text); line-height: 1.5; margin-bottom: 8px; }
+  .tac-why { font-size: 13px; color: #b8e994; background: rgba(123,216,143,0.1); border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; }
+  .tac-why::before { content: "✅ Why: "; font-weight: 800; }
   .tac-term { font-size: 12.5px; color: #ffe27a; background: rgba(255,226,122,0.1); border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; }
   .tac-feedback { font-size: 14px; min-height: 22px; line-height: 1.4; margin-bottom: 10px; font-weight: 600; }
   .tac-feedback.good { color: #7bd88f; } .tac-feedback.warn { color: #ffd479; }
@@ -614,6 +616,7 @@
       <div class="tac-step" id="tacStep"></div>
       <h3 class="tac-title" id="tacTitle"></h3>
       <p class="tac-text" id="tacText"></p>
+      <div class="tac-why" id="tacWhy" style="display:none"></div>
       <div class="tac-term" id="tacTerm" style="display:none"></div>
       <div class="tac-feedback" id="tacFeedback"></div>
       <div class="rv-nav">
@@ -1325,6 +1328,7 @@ const tacStepEl = document.getElementById("tacStep");
 const tacTitleEl = document.getElementById("tacTitle");
 const tacTextEl = document.getElementById("tacText");
 const tacTermEl = document.getElementById("tacTerm");
+const tacWhyEl = document.getElementById("tacWhy");
 const tacFeedbackEl = document.getElementById("tacFeedback");
 const tacNextBtn = document.getElementById("tacNext");
 const tutOverlay = document.getElementById("tutOverlay");
@@ -2626,33 +2630,57 @@ function setupFEN(fen) {
   history = []; repMap = Object.create(null);
 }
 const TACTICS = [
-  { step: "Opening 1 of 4", setup: "start", title: "Control the centre",
-    text: "The centre squares (d4, d5, e4, e5) are the most valuable — controlling them gives your pieces more reach. Grab one now: push your e-pawn two squares to e4.",
-    term: "The centre — fight for d4/d5/e4/e5 from move one.",
+  // ---- Guided opening (you play, the computer replies) ----
+  { step: "Opening 1 of 5", setup: "start", title: "Take the centre",
+    text: "Push your king's pawn to e4 (follow the arrow).",
+    why: "It grabs the middle of the board and opens lines for your queen and bishop.",
+    term: "The centre = d4, d5, e4, e5 — the most important squares.",
     expect: [["e2", "e4"]], reply: ["e7", "e5"], hint: true },
-  { step: "Opening 2 of 4", setup: "continue", title: "Develop a knight",
-    text: "\"Development\" means getting pieces off the back rank toward the centre. Play your knight to f3 — it develops and attacks the e5 pawn.",
-    term: "Development — bring knights and bishops out early (knights before bishops).",
+  { step: "Opening 2 of 5", setup: "continue", title: "Get a knight out",
+    text: "Move your knight to f3.",
+    why: "Knights are strong in the centre, and this one also attacks black's e5 pawn.",
+    term: "Development = bringing your pieces out. Knights before bishops.",
     expect: [["g1", "f3"]], reply: ["b8", "c6"], hint: true },
-  { step: "Opening 3 of 4", setup: "continue", title: "Develop a bishop",
-    text: "Bring your bishop to c4, aiming at black's weak f7 square. This well-known line is the Italian Game.",
-    term: "Italian Game — 1.e4 e5 2.Nf3 Nc6 3.Bc4.",
+  { step: "Opening 3 of 5", setup: "continue", title: "Get a bishop out",
+    text: "Move your bishop to c4.",
+    why: "It aims straight at f7 — the weakest square next to black's king.",
+    term: "This opening is called the Italian Game.",
     expect: [["f1", "c4"]], reply: ["f8", "c5"], hint: true },
-  { step: "Opening 4 of 4", setup: "continue", title: "Castle to safety",
-    text: "Tuck your king into the corner and connect your rooks. Castle kingside — click the king, then the g1 square.",
-    term: "Castling — get your king safe early; don't leave it in the centre.",
+  { step: "Opening 4 of 5", setup: "continue", title: "Castle your king",
+    text: "Castle: click the king, then click g1.",
+    why: "Your king hides safely in the corner and your rook joins the game.",
+    term: "Castling: the king's special two-square move. Do it early.",
     expect: [["e1", "g1"]], reply: ["g8", "f6"], hint: true },
-  { step: "Quiz 1 of 3", setup: "r1bqkb1r/pppp1ppp/2n5/4p3/4n3/5N2/PPPPQPPP/RNB1KB1R w KQkq -",
-    title: "Quiz: win a free piece", text: "Black's knight in the centre is undefended. Win it for free — no hint this time!",
-    expect: [["e2", "e4"]], hint: false, win: "Yes! Always scan for undefended enemy pieces to grab." },
-  { step: "Quiz 2 of 3", setup: "r3k2r/ppp1pppp/8/1N6/8/8/PPPP1PPP/R1BQKB1R w KQkq -",
-    title: "Quiz: find the fork", text: "A 'fork' is one piece attacking two at once. Find the knight move that checks the king AND hits the rook.",
-    term: "Fork — one piece attacking two enemy pieces simultaneously.",
-    expect: [["b5", "c7"]], hint: false, win: "Fork! It's check, and next move you take the rook." },
-  { step: "Quiz 3 of 3", setup: "6k1/5ppp/8/8/8/8/8/R6K w - -",
-    title: "Quiz: checkmate in one", text: "The black king is stuck behind its own pawns. Deliver checkmate in one with your rook on the back rank.",
-    term: "Checkmate — the king is attacked with no legal escape. That wins the game.",
-    expect: [["a1", "a8"]], hint: false, win: "Checkmate! That's how every game is won. 🏆" },
+  { step: "Opening 5 of 5", setup: "continue", title: "Back up the centre",
+    text: "Play the pawn to d3.",
+    why: "It defends your e4 pawn and frees your last bishop to come out.",
+    term: "Don't grab the centre and then leave those pawns undefended.",
+    expect: [["d2", "d3"]], reply: ["d7", "d6"], hint: true },
+  // ---- Quizzes (no hint — find the move) ----
+  { step: "Quiz 1 of 5", setup: "r1bqkb1r/pppp1ppp/2n5/4p3/4n3/5N2/PPPPQPPP/RNB1KB1R w KQkq -",
+    title: "Win a free piece", text: "Black's knight in the middle isn't protected. Take it!",
+    why: "Free pieces win games — always check for enemy pieces nothing is guarding.",
+    expect: [["e2", "e4"]], hint: false, win: "Yes! A free knight." },
+  { step: "Quiz 2 of 5", setup: "r3k2r/ppp1pppp/8/1N6/8/8/PPPP1PPP/R1BQKB1R w KQkq -",
+    title: "Find the fork", text: "Jump your knight to c7.",
+    why: "It checks the king AND attacks the rook at once — they can't save both, so you win the rook.",
+    term: "Fork = one piece attacking two things at the same time.",
+    expect: [["b5", "c7"]], hint: false, win: "Fork! Next move you grab the rook." },
+  { step: "Quiz 3 of 5", setup: "r1bqk1nr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq -",
+    title: "Pin the knight", text: "Move your bishop to b5.",
+    why: "The knight is now stuck — if it moves, the king behind it would be in check. A pinned piece can't run away.",
+    term: "Pin = a piece can't move because a bigger piece sits behind it.",
+    expect: [["f1", "b5"]], hint: false, win: "Pinned! That knight is glued in place." },
+  { step: "Quiz 4 of 5", setup: "4q3/4k3/8/8/8/8/8/R5K1 w - -",
+    title: "Win the queen (skewer)", text: "Slide your rook to e1, giving check.",
+    why: "The king must step off the line — then your rook takes the queen behind it.",
+    term: "Skewer = a check that forces the king aside so you grab the piece behind.",
+    expect: [["a1", "e1"]], hint: false, win: "Skewer! The king moves and the queen falls." },
+  { step: "Quiz 5 of 5", setup: "6k1/5ppp/8/8/8/8/8/R6K w - -",
+    title: "Checkmate in one", text: "Slide your rook to a8.",
+    why: "It attacks the king along the back row, and the king's own pawns block every escape.",
+    term: "Checkmate = the king is attacked and has no legal escape. You win the game.",
+    expect: [["a1", "a8"]], hint: false, win: "Checkmate! 🏆" },
 ];
 function tacFeedback(text, kind) { tacFeedbackEl.textContent = text; tacFeedbackEl.className = "tac-feedback " + (kind || ""); }
 function openTactics(fromBeginner) {
@@ -2672,6 +2700,8 @@ function loadTactics(i) {
   tacStepEl.textContent = T.step;
   tacTitleEl.textContent = T.title;
   tacTextEl.textContent = T.text;
+  tacWhyEl.style.display = T.why ? "block" : "none";
+  tacWhyEl.textContent = T.why || "";
   tacTermEl.style.display = T.term ? "block" : "none";
   tacTermEl.textContent = T.term ? ("💡 " + T.term) : "";
   tacFeedbackEl.textContent = ""; tacFeedbackEl.className = "tac-feedback";
