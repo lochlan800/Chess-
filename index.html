@@ -2441,18 +2441,19 @@ function tutBoard(n, placements) {
 }
 const TUTORIAL_LESSONS = [
   // --- Learn each piece (with glowing hints) ---
-  { step: "Lesson 1 of 6", cols: 5, rows: 5, move: "pawn", piece: "P", pieceSq: 17, board: tutBoard(25, { 17: "P", 11: "p" }),
-    title: "The Pawn", text: "Pawns move forward one square (or two on their first move). Click the pawn, then a glowing square.",
-    capture: { text: "Pawns capture diagonally — they can't take straight ahead. Click the pawn, then take the black piece!" } },
-  { step: "Lesson 2 of 6", cols: 5, rows: 5, move: "rook", piece: "R", pieceSq: 12, board: tutBoard(25, { 12: "R" }),
+  { step: "Lesson 1 of 7", cols: 5, rows: 5, move: "pawn", piece: "P", pieceSq: 17, board: tutBoard(25, { 17: "P" }),
+    title: "The Pawn", text: "Pawns move straight forward — one square, or two on their very first move. Click the pawn, then a glowing square." },
+  { step: "Lesson 2 of 7", cols: 5, rows: 5, move: "pawncap", piece: "P", pieceSq: 17, board: tutBoard(25, { 17: "P", 11: "p", 13: "p" }),
+    title: "The Pawn — capturing", text: "Pawns can't capture straight ahead — they capture one square diagonally forward. Click the pawn, then take a black piece!" },
+  { step: "Lesson 3 of 7", cols: 5, rows: 5, move: "rook", piece: "R", pieceSq: 12, board: tutBoard(25, { 12: "R" }),
     title: "The Rook", text: "Rooks move in straight lines — along rows and columns, as far as they like. Click the rook, then a glowing square." },
-  { step: "Lesson 3 of 6", cols: 5, rows: 5, move: "bishop", piece: "B", pieceSq: 12, board: tutBoard(25, { 12: "B" }),
+  { step: "Lesson 4 of 7", cols: 5, rows: 5, move: "bishop", piece: "B", pieceSq: 12, board: tutBoard(25, { 12: "B" }),
     title: "The Bishop", text: "Bishops move diagonally, any distance — and stay on one colour forever. Click the bishop, then a glowing square." },
-  { step: "Lesson 4 of 6", cols: 5, rows: 5, move: "knight", piece: "N", pieceSq: 12, board: tutBoard(25, { 12: "N" }),
+  { step: "Lesson 5 of 7", cols: 5, rows: 5, move: "knight", piece: "N", pieceSq: 12, board: tutBoard(25, { 12: "N" }),
     title: "The Knight", text: "Knights move in an L-shape (two then one) and can jump over other pieces. Click the knight, then a glowing square." },
-  { step: "Lesson 5 of 6", cols: 5, rows: 5, move: "queen", piece: "Q", pieceSq: 12, board: tutBoard(25, { 12: "Q" }),
+  { step: "Lesson 6 of 7", cols: 5, rows: 5, move: "queen", piece: "Q", pieceSq: 12, board: tutBoard(25, { 12: "Q" }),
     title: "The Queen", text: "The queen is the most powerful piece — she moves in straight lines AND diagonals. Click the queen, then a glowing square." },
-  { step: "Lesson 6 of 6", cols: 5, rows: 5, move: "king", piece: "K", pieceSq: 12, board: tutBoard(25, { 12: "K" }),
+  { step: "Lesson 7 of 7", cols: 5, rows: 5, move: "king", piece: "K", pieceSq: 12, board: tutBoard(25, { 12: "K" }),
     title: "The King", text: "The king moves one square in any direction. He's the most important piece — keep him safe! Click the king, then a glowing square." },
   // --- Test each piece (NO hints) ---
   { step: "Test 1 of 6", test: true, cols: 5, rows: 5, move: "pawn", piece: "P", pieceSq: 17, board: tutBoard(25, { 17: "P" }),
@@ -2483,13 +2484,11 @@ function tutMoveTargets(state) {
   const out = [];
   const slide = dirs => { for (const [dr, dc] of dirs) { let nr = r + dr, nc = c + dc; while (inside(nr, nc)) { const i = nr * cols + nc; if (empty(i)) out.push(i); else { if (enemy(i)) out.push(i); break; } nr += dr; nc += dc; } } };
   const hop = offs => { for (const [dr, dc] of offs) { const nr = r + dr, nc = c + dc; if (inside(nr, nc)) { const i = nr * cols + nc; if (empty(i) || enemy(i)) out.push(i); } } };
-  if (L.move === "pawn") {
-    if (state.phase === "capture") {
-      for (const dc of [-1, 1]) { const nr = r - 1, nc = c + dc; if (inside(nr, nc) && enemy(nr * cols + nc)) out.push(nr * cols + nc); }
-    } else {
-      const one = (r - 1) * cols + c;
-      if (r - 1 >= 0 && empty(one)) { out.push(one); const two = (r - 2) * cols + c; if (r === rows - 2 && r - 2 >= 0 && empty(two)) out.push(two); }
-    }
+  if (L.move === "pawn") {            // forward one (or two from the start square)
+    const one = (r - 1) * cols + c;
+    if (r - 1 >= 0 && empty(one)) { out.push(one); const two = (r - 2) * cols + c; if (r === rows - 2 && r - 2 >= 0 && empty(two)) out.push(two); }
+  } else if (L.move === "pawncap") {  // diagonal forward captures only
+    for (const dc of [-1, 1]) { const nr = r - 1, nc = c + dc; if (inside(nr, nc) && enemy(nr * cols + nc)) out.push(nr * cols + nc); }
   } else if (L.move === "rook") slide(R_DIRS);
   else if (L.move === "bishop") slide(B_DIRS);
   else if (L.move === "queen") slide(B_DIRS.concat(R_DIRS));
@@ -2560,21 +2559,12 @@ function onTutClick(idx) {
       s.pieceSq = idx;
       s.selected = false;
       playMoveSound(wasCapture, false, false);
-      if (L.capture && s.phase === "move") {
-        // reset to the original setup and ask for the diagonal capture
-        s.phase = "capture";
-        s.board = L.board.slice();
-        s.pieceSq = L.pieceSq;
-        renderTutBoard();
-        tutFeedback(L.capture.text, "good");
-        return;
-      }
       s.solved = true;
       tutNextBtn.disabled = false;
       renderTutBoard();
       if (L.move === "goal") tutFeedback("Checkmate! The black king can't escape — that's a win. 🎉", "good");
       else if (L.test) tutFeedback("✓ Correct! You've got the " + PIECE_NAME[L.piece] + ". Press Next ▶", "good");
-      else if (s.phase === "capture") tutFeedback("Perfect — you captured it! Press Next ▶", "good");
+      else if (L.move === "pawncap") tutFeedback("Perfect — that's a pawn capture! Press Next ▶", "good");
       else tutFeedback("Nice! That's how the " + PIECE_NAME[L.piece] + " moves. Press Next ▶", "good");
       return;
     }
