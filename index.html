@@ -284,6 +284,21 @@
   .end-sub { font-size: 14px; color: var(--muted); margin-bottom: 18px; }
   .end-box .btn, .review-box .btn { width: auto; padding: 11px 22px; }
   .end-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  /* Practice mode: coach pre-move question + back bar */
+  .coach-overlay { background: rgba(16,20,30,0.82); backdrop-filter: blur(2px); }
+  .coach-box {
+    background: var(--panel); border-radius: 16px; padding: 20px 22px; text-align: center;
+    box-shadow: 0 14px 44px rgba(0,0,0,0.6); max-width: min(360px, 86vw);
+    animation: pop 0.3s cubic-bezier(0.2, 1.4, 0.5, 1);
+  }
+  .coach-emoji { font-size: 40px; line-height: 1; }
+  .coach-label { font-size: 12px; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin: 6px 0; }
+  .coach-q { font-size: 21px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; }
+  .coach-count { font-size: 34px; font-weight: 900; color: var(--accent); margin-bottom: 12px; }
+  .coach-box .btn { width: auto; padding: 10px 20px; }
+  .practice-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .practice-bar .btn { width: auto; padding: 8px 14px; }
+  .practice-tag { font-size: 13px; font-weight: 700; color: #b8e994; }
 
   #reviewOverlay { position: fixed; z-index: 50; }
   .review-box {
@@ -606,6 +621,7 @@
     <p class="start-sub">New to chess? Learn the pieces first.</p>
     <button class="btn primary start-big" id="startBeginner">📚 Beginner — learn to play</button>
     <button class="btn start-big" id="startTactics">🎯 Tactics — openings &amp; patterns</button>
+    <button class="btn start-big" id="startPractice">🧑‍🏫 Practice — coached, no points</button>
     <button class="btn start-big" id="startPlay">▶ Start game</button>
   </div>
 </div>
@@ -678,6 +694,15 @@
           <div class="review-progress" id="reviewProgress"></div>
         </div>
       </div>
+      <div class="end-overlay coach-overlay" id="coachAsk" style="display:none">
+        <div class="coach-box">
+          <div class="coach-emoji">🧑‍🏫</div>
+          <div class="coach-label">Before you move, ask yourself…</div>
+          <div class="coach-q" id="coachQ"></div>
+          <div class="coach-count" id="coachCount">10</div>
+          <button class="btn" id="coachReady">I've thought about it ▶</button>
+        </div>
+      </div>
 
     </div>
     </div>
@@ -737,6 +762,10 @@
   </div>
 
   <div class="panel">
+    <div class="practice-bar" id="practiceBar" style="display:none">
+      <button class="btn" id="practiceBack">⬅ Back</button>
+      <span class="practice-tag">🧑‍🏫 Practice mode — no points</span>
+    </div>
     <div class="scorebar" id="scorebar">
       <div class="score-cell"><span class="score-big" id="trophyCount">0</span><span class="score-lbl"><span id="rankName">Pawn</span> 🏆</span></div>
       <div class="score-cell" id="xpCell">
@@ -1410,6 +1439,33 @@ const endSub = document.getElementById("endSub");
 
 let st, history, repMap, gameOver, selected, legalForSelected, humanColor, thinking, pendingPromo;
 let tutorialMode = false;   // weakest random AI + suppress points during the practice game
+// Practice mode: a real game vs your opponent, but no points, a Back button, and
+// a coach that pauses you before each move with a question to always ask.
+let practiceMode = false;
+let coachPausing = false;   // true while the coach question is up (blocks moves)
+let coachTimer = null;      // the 10-second countdown interval
+let coachQIdx = 0;          // which checklist question to show next
+const COACH_QUESTIONS = [
+  "Is my king safe?",
+  "Are any of my pieces left undefended?",
+  "What is my opponent threatening?",
+  "Can I win a piece or pawn for free?",
+  "If I make this move, what can they do back?",
+  "Does this move leave anything hanging?",
+  "Can I give a check or make a strong threat?",
+  "Are all my pieces doing something useful?",
+  "What is my opponent's last move trying to do?",
+  "Is there an even better move than my first idea?",
+];
+function speak(text) {
+  try {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.95; u.pitch = 1.05;
+    window.speechSynthesis.speak(u);
+  } catch (e) {}
+}
 let tutIdx = 0, tutState = null;
 let coachHint = null;       // {from,to} suggested move arrow for the "Show me" coach
 let awaitingStart = false;  // board is locked until the player picks an opponent
@@ -1476,6 +1532,7 @@ function repKey(s) {
 }
 
 function resetGame() {
+  endCoachPause();      // clear any lingering practice-coach pause
   st = newState();
   history = [];
   repMap = Object.create(null);
@@ -1507,6 +1564,7 @@ function resetGame() {
   render();
   say("greet");
   maybeAiTurn();
+  maybePracticeCoach();   // pause + ask before your first move (when you move first)
 }
 
 /* ---- Post-game review: step through the game move by move with coaching ---- */
@@ -2059,7 +2117,7 @@ function playMove(m) {
   // points are included before awardPoints adds the end bonus. The on-board
   // "+N" pop is shown after render() below (otherwise the re-render wipes it).
   let movePts = 0;
-  if (humanMove && !tutorialMode) movePts = awardMovePoints(m);
+  if (humanMove && !tutorialMode && !practiceMode) movePts = awardMovePoints(m);
   checkGameEnd();
   computeLiveEval();
   if (gameOver) awardPoints(gameOver.winnerColor ? (gameOver.winnerColor === humanColor ? "win" : "loss") : "draw");
@@ -2076,6 +2134,7 @@ function playMove(m) {
   reactToMove(m, isComputer, checking);
   render();
   if (movePts) popBoardPoints(m.to, "+" + movePts);   // float the points off the square
+  maybePracticeCoach();   // if it's now your turn in practice mode, pause + ask
 }
 
 function undo() {
@@ -2116,7 +2175,7 @@ function updateScoreUI() {
 }
 
 function awardPoints(outcome) {
-  if (tutorialMode) return;   // the practice game is for learning, not points
+  if (tutorialMode || practiceMode) return;   // learning / practice games award no points
   if (pointsAwarded) return;
   pointsAwarded = true;
   const level = CHARACTERS[selectedChar].level;
@@ -2490,6 +2549,7 @@ function selectCharacter(i) {
   renderCharGrid();
   applyOpponentDisplay();
   tutorialMode = false;
+  practiceMode = false;
   awaitingStart = false;   // choosing an opponent starts the game
   const gate = document.getElementById("startGate");
   if (gate) gate.style.display = "none";
@@ -2577,7 +2637,7 @@ function stopTimer() {
   timerEl.style.display = "none";
 }
 function syncTimer() {
-  const yourTurn = moveTimeLimit > 0 && !awaitingStart && !tacticsMode && !gameOver && !thinking && !reviewMode && !pendingPromo && st.turn === humanColor;
+  const yourTurn = moveTimeLimit > 0 && !awaitingStart && !tacticsMode && !practiceMode && !gameOver && !thinking && !reviewMode && !pendingPromo && st.turn === humanColor;
   if (yourTurn) { if (!timerRunning) startTimer(); }
   else stopTimer();
 }
@@ -2637,8 +2697,62 @@ function maybeAiTurn() {
   }, 60);
 }
 
+/* ---- Practice mode: coached real game, no points, with a Back button ---- */
+function startPractice() {
+  practiceMode = true;
+  tutorialMode = false;
+  awaitingStart = false;
+  lastScore = null;
+  startOverlay.style.display = "none";
+  tutOverlay.style.display = "none";
+  document.getElementById("startGate").style.display = "none";
+  coachQIdx = 0;
+  resetGame();
+}
+function exitPractice() {
+  endCoachPause();
+  practiceMode = false;
+  try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+  document.getElementById("practiceBar").style.display = "none";
+  document.getElementById("coachAsk").style.display = "none";
+  armStartGate();   // back to "pick your opponent"
+}
+// Show the coach question (and speak it), pausing the player ~10 seconds before
+// they may move. Called whenever it becomes the human's turn in practice mode.
+function showCoachAsk() {
+  if (!practiceMode || gameOver || st.turn !== humanColor) return;
+  const q = COACH_QUESTIONS[coachQIdx % COACH_QUESTIONS.length];
+  coachQIdx++;
+  document.getElementById("coachQ").textContent = q;
+  const overlay = document.getElementById("coachAsk");
+  const countEl = document.getElementById("coachCount");
+  coachPausing = true;
+  overlay.style.display = "flex";
+  speak(q);
+  let left = 10;
+  countEl.textContent = left;
+  if (coachTimer) clearInterval(coachTimer);
+  coachTimer = setInterval(() => {
+    left--;
+    countEl.textContent = left > 0 ? left : "Go!";
+    if (left <= 0) endCoachPause();
+  }, 1000);
+}
+function endCoachPause() {
+  if (coachTimer) { clearInterval(coachTimer); coachTimer = null; }
+  coachPausing = false;
+  try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+  const overlay = document.getElementById("coachAsk");
+  if (overlay) overlay.style.display = "none";
+}
+// Trigger the coach the moment it's the human's turn (game start / after AI).
+function maybePracticeCoach() {
+  if (practiceMode && !gameOver && !coachPausing && st.turn === humanColor) showCoachAsk();
+}
+
 function onSquareClick(sq) {
   if (tacticsMode) { onTacticsClick(sq); return; }
+  if (coachPausing) return;   // practice mode: wait for the coach's pause to finish
   if (awaitingStart || reviewMode || gameOver || thinking || pendingPromo || st.turn !== humanColor) return;
   const p = st.board[sq];
 
@@ -3111,6 +3225,8 @@ function renderStatus() {
   boardEl.classList.remove("skin-emoji");
   boardEl.classList.add("skin-" + PIECE_SKINS[activeSkin].id);
   if (PIECE_SKINS[activeSkin].emoji) boardEl.classList.add("skin-emoji");
+  const pBar = document.getElementById("practiceBar");
+  if (pBar) pBar.style.display = practiceMode ? "flex" : "none";
   if (gameOver) {
     statusEl.innerHTML = `<span>🏁 ${gameOver.result}</span>`;
   } else if (thinking) {
@@ -3266,7 +3382,7 @@ function render() {
 levelEl.addEventListener("change", () => {
   levelInfoEl.textContent = LEVELS[parseInt(levelEl.value, 10)].info;
 });
-function newNormalGame() { tutorialMode = false; resetGame(); }
+function newNormalGame() { tutorialMode = false; practiceMode = false; resetGame(); }
 sideEl.addEventListener("change", newNormalGame);
 document.getElementById("timerSel").addEventListener("change", (e) => {
   moveTimeLimit = parseInt(e.target.value, 10);
@@ -3317,6 +3433,7 @@ resetGame();
 function armStartGate() {
   awaitingStart = true;
   tutorialMode = false;
+  practiceMode = false;
   startOverlay.style.display = "none";
   tutOverlay.style.display = "none";
   buildCharCards(document.getElementById("gateGrid"));
@@ -3337,6 +3454,9 @@ document.getElementById("tacNext").addEventListener("click", tacticsNext);
 document.getElementById("tacExit").addEventListener("click", finishTactics);
 document.getElementById("openShop").addEventListener("click", openShop);
 document.getElementById("shopClose").addEventListener("click", () => { document.getElementById("shopOverlay").style.display = "none"; });
+document.getElementById("startPractice").addEventListener("click", startPractice);
+document.getElementById("practiceBack").addEventListener("click", exitPractice);
+document.getElementById("coachReady").addEventListener("click", endCoachPause);
 </script>
 </body>
 </html>
