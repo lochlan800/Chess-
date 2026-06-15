@@ -1718,6 +1718,11 @@ function showReviewStep() {
     ? (reviewSteps.length > 1 ? "Start" : "—")
     : `Key ${reviewIdx} / ${reviewSteps.length - 1}`;
   render();
+  // The "Start game — pick your opponent" gate sits over the board at the
+  // analysis intro, and hides while you step through the moves.
+  const gate = document.getElementById("startGate");
+  if (reviewIdx === 0) { buildCharCards(document.getElementById("gateGrid")); gate.style.display = "flex"; }
+  else gate.style.display = "none";
 }
 
 /* ---- Capture heatmaps ---- */
@@ -2977,6 +2982,7 @@ function render() {
   syncTimer();
   updateEvalBar();
   if (reviewMode) return;             // review bar drives the UI; leave overlays alone
+  if (awaitingStart) { endOverlay.style.display = "none"; return; }   // the gate is up
   if (gameOver) showEndOverlay();
   else endOverlay.style.display = "none";
 }
@@ -3003,7 +3009,7 @@ document.getElementById("rvBack").addEventListener("click", () => {
 document.getElementById("rvExit").addEventListener("click", () => {
   reviewMode = false;
   reviewBar.style.display = "none";
-  render();                       // gameOver still set → end overlay returns
+  armStartGate();                 // finishing the review → pick your opponent
 });
 document.getElementById("heatYou").addEventListener("click", () => setHeatView("you"));
 document.getElementById("heatAi").addEventListener("click", () => setHeatView("ai"));
