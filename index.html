@@ -131,13 +131,30 @@
   .piece { position: relative; z-index: 1; font-variant-emoji: text; }
   .piece.w { color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.7), 0 0 1px #000; }
   .piece.b { color: #1a1a1a; text-shadow: 0 1px 2px rgba(255,255,255,0.25); }
-  /* Unlockable piece styles (skins). The skin class sits on the board (and on
-     the shop preview tiles) so the same rules style both. */
-  /* Themed emoji skins: render in full colour; darken the black army so the
-     two sides are still easy to tell apart. */
-  .skin-emoji .piece { font-variant-emoji: emoji; text-shadow: none; }
-  .skin-emoji .piece.w { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.45)); }
-  .skin-emoji .piece.b { filter: brightness(0.5) saturate(0.85) contrast(1.05) drop-shadow(0 1px 1px rgba(255,255,255,0.3)); }
+  /* Unlockable piece styles (skins). Every style uses the real chess-piece
+     shapes; the theme is a colour/glow treatment. The skin class sits on the
+     board and on the shop preview tiles so the same rules style both. The
+     white army is the light/bright variant, the black army the dark variant. */
+  .skin-medieval .piece.w { color: #efe6d2; text-shadow: 0 1px 2px #4a3b22, 0 0 1px #000; }
+  .skin-medieval .piece.b { color: #5c4a2e; text-shadow: 0 1px 1px rgba(255,255,255,0.25); }
+  .skin-halloween .piece.w { color: #ff9d3a; text-shadow: 0 0 6px #ff7518, 0 0 2px #000; }
+  .skin-halloween .piece.b { color: #3a2c52; text-shadow: 0 0 6px #7d3cff, 0 1px 1px rgba(255,255,255,0.2); }
+  .skin-christmas .piece.w { color: #ff5b5b; text-shadow: 0 1px 2px #7a0000, 0 0 4px rgba(255,215,120,0.55); }
+  .skin-christmas .piece.b { color: #1f7a42; text-shadow: 0 1px 2px #0a3a1c, 0 0 4px rgba(255,215,120,0.45); }
+  .skin-viking .piece.w { color: #d6e2ea; text-shadow: 0 1px 2px #2a343c, 0 0 1px #000; }
+  .skin-viking .piece.b { color: #39434b; text-shadow: 0 1px 1px rgba(255,255,255,0.28); }
+  .skin-easter .piece.w { color: #ff9ed6; text-shadow: 0 1px 2px #a64d86, 0 0 3px rgba(255,255,255,0.4); }
+  .skin-easter .piece.b { color: #7e6bd0; text-shadow: 0 1px 1px rgba(255,255,255,0.3); }
+  .skin-victorian .piece.w { color: #f0e6cf; text-shadow: 0 1px 2px #3a2a14, 0 0 2px #000; }
+  .skin-victorian .piece.b { color: #6e1f33; text-shadow: 0 1px 1px rgba(255,255,255,0.25); }
+  .skin-fantasy .piece.w { color: #a9f7e4; text-shadow: 0 0 6px #2fd9b0, 0 0 2px #000; }
+  .skin-fantasy .piece.b { color: #9b5bff; text-shadow: 0 0 7px #b78bff, 0 1px 1px rgba(255,255,255,0.2); }
+  .skin-futuristic .piece.w { color: #e9feff; text-shadow: 0 0 5px #28e0ff, 0 0 11px #28e0ff; }
+  .skin-futuristic .piece.b { color: #0c3a44; text-shadow: 0 0 6px #28e0ff, 0 1px 1px rgba(255,255,255,0.25); }
+  .skin-living .piece.w { color: #c4ec96; text-shadow: 0 1px 2px #2e4a18, 0 0 1px #000; }
+  .skin-living .piece.b { color: #46361f; text-shadow: 0 1px 1px rgba(255,255,255,0.28); }
+  .skin-lotr .piece.w { color: #ffdf7a; text-shadow: 0 0 5px #ffb300, 0 1px 2px #5a3b00; }
+  .skin-lotr .piece.b { color: #2b2310; text-shadow: 0 0 6px #ffae00, 0 1px 1px rgba(255,220,120,0.4); }
   .skin-neon .piece.w { color: #d7fbff; text-shadow: 0 0 5px #38e0ff, 0 0 12px #38e0ff; }
   .skin-neon .piece.b { color: #ffd0ff; text-shadow: 0 0 5px #ff5bf0, 0 0 12px #ff5bf0; }
   .skin-gold .piece.w { color: #ffd86b; text-shadow: 0 1px 2px #6b4d00, 0 0 6px rgba(255,200,80,0.6); }
@@ -866,24 +883,24 @@
 // plain text glyphs, not colour emoji — so the white/black CSS colours apply
 // consistently across phones (iOS / WhatsApp webview rendered them as emoji).
 const GLYPH = { P:"♟︎", N:"♞︎", B:"♝︎", R:"♜︎", Q:"♛︎", K:"♚︎" };
-// Unlockable piece styles. `glyphs` is the P/N/B/R/Q/K symbol set; `emoji:true`
-// marks themed emoji skins (rendered in colour, dark army darkened by CSS).
-// `cost` is the lifetime XP needed to unlock.
+// Unlockable piece styles. `cost` is the lifetime XP needed to unlock.
+// All styles use the real chess-piece shapes (GLYPH); each theme is a CSS
+// colour/effect treatment so the set still reads as proper chess pieces.
 const PIECE_SKINS = [
   { id:"classic",    name:"Classic",          cost:0 },
-  { id:"medieval",   name:"Medieval",         cost:500,   emoji:true, glyphs:{ P:"🛡️", N:"🐴", B:"⛪", R:"🏰", Q:"👸", K:"🤴" } },
+  { id:"medieval",   name:"Medieval",         cost:500 },
   { id:"neon",       name:"Neon",             cost:1000 },
-  { id:"halloween",  name:"Halloween",        cost:1500,  emoji:true, glyphs:{ P:"💀", N:"🦇", B:"👻", R:"🏚️", Q:"🧙‍♀️", K:"🎃" } },
-  { id:"christmas",  name:"Christmas",        cost:2200,  emoji:true, glyphs:{ P:"🎁", N:"🦌", B:"⛄", R:"🎄", Q:"🤶", K:"🎅" } },
+  { id:"halloween",  name:"Halloween",        cost:1500 },
+  { id:"christmas",  name:"Christmas",        cost:2200 },
   { id:"gold",       name:"Gold",             cost:3000 },
-  { id:"viking",     name:"Viking",           cost:4000,  emoji:true, glyphs:{ P:"⚔️", N:"🐗", B:"🐺", R:"🚢", Q:"🛡️", K:"🪓" } },
-  { id:"easter",     name:"Easter",           cost:5000,  emoji:true, glyphs:{ P:"🥚", N:"🐑", B:"🌷", R:"🧺", Q:"🐣", K:"🐰" } },
+  { id:"viking",     name:"Viking",           cost:4000 },
+  { id:"easter",     name:"Easter",           cost:5000 },
   { id:"frost",      name:"Frost",            cost:6500 },
-  { id:"victorian",  name:"Victorian",        cost:8000,  emoji:true, glyphs:{ P:"🫖", N:"🐎", B:"☂️", R:"🏛️", Q:"👒", K:"🎩" } },
-  { id:"fantasy",    name:"Fantasy",          cost:10000, emoji:true, glyphs:{ P:"🍄", N:"🐉", B:"🦄", R:"🏰", Q:"🧚", K:"🧙" } },
-  { id:"futuristic", name:"Futuristic",       cost:13000, emoji:true, glyphs:{ P:"🔋", N:"🚀", B:"👽", R:"🛰️", Q:"🛸", K:"🤖" } },
-  { id:"living",     name:"Living",           cost:17000, emoji:true, glyphs:{ P:"🐭", N:"🐴", B:"🦊", R:"🐘", Q:"🦅", K:"🦁" } },
-  { id:"lotr",       name:"Lord of the Rings",cost:22000, emoji:true, glyphs:{ P:"⚔️", N:"🦅", B:"🧙", R:"🗼", Q:"🧝", K:"💍" } },
+  { id:"victorian",  name:"Victorian",        cost:8000 },
+  { id:"fantasy",    name:"Fantasy",          cost:10000 },
+  { id:"futuristic", name:"Futuristic",       cost:13000 },
+  { id:"living",     name:"Living",           cost:17000 },
+  { id:"lotr",       name:"Lord of the Rings",cost:22000 },
 ];
 let activeSkin = 0;
 function glyphFor(pieceUpper) { return (PIECE_SKINS[activeSkin].glyphs || GLYPH)[pieceUpper]; }
@@ -2285,14 +2302,13 @@ function buildShop() {
     card.className = "shop-card" + (unlocked ? "" : " locked") + (equipped ? " equipped" : "");
     const preview = document.createElement("div");
     if (unlocked) {
-      const gl = skin.glyphs || GLYPH;
-      preview.className = "shop-preview skin-" + skin.id + (skin.emoji ? " skin-emoji" : "");
-      // show a white queen/knight and a black rook/pawn in this style
+      preview.className = "shop-preview skin-" + skin.id;
+      // show a white king/queen and a black knight/rook in this style
       preview.innerHTML =
-        '<span class="piece w">' + gl.Q + '</span>' +
-        '<span class="piece w">' + gl.N + '</span>' +
-        '<span class="piece b">' + gl.R + '</span>' +
-        '<span class="piece b">' + gl.P + '</span>';
+        '<span class="piece w">' + GLYPH.K + '</span>' +
+        '<span class="piece w">' + GLYPH.Q + '</span>' +
+        '<span class="piece b">' + GLYPH.N + '</span>' +
+        '<span class="piece b">' + GLYPH.R + '</span>';
     } else {
       preview.className = "shop-preview locked-q";
       preview.textContent = "?";   // a big black mystery
@@ -3222,9 +3238,7 @@ function renderStatus() {
   statusEl.classList.toggle("thinking", thinking && !gameOver);
   boardEl.classList.toggle("thinking", thinking && !gameOver);
   PIECE_SKINS.forEach(s => boardEl.classList.remove("skin-" + s.id));
-  boardEl.classList.remove("skin-emoji");
   boardEl.classList.add("skin-" + PIECE_SKINS[activeSkin].id);
-  if (PIECE_SKINS[activeSkin].emoji) boardEl.classList.add("skin-emoji");
   const pBar = document.getElementById("practiceBar");
   if (pBar) pBar.style.display = practiceMode ? "flex" : "none";
   if (gameOver) {
