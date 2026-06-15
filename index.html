@@ -131,6 +131,15 @@
   .piece { position: relative; z-index: 1; font-variant-emoji: text; }
   .piece.w { color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.7), 0 0 1px #000; }
   .piece.b { color: #1a1a1a; text-shadow: 0 1px 2px rgba(255,255,255,0.25); }
+  /* Unlockable piece styles (skins). The skin class sits on the board (and on
+     the shop preview tiles) so the same rules style both. */
+  .skin-letters .piece { font-weight: 900; font-family: "Trebuchet MS", Verdana, sans-serif; }
+  .skin-neon .piece.w { color: #d7fbff; text-shadow: 0 0 5px #38e0ff, 0 0 12px #38e0ff; }
+  .skin-neon .piece.b { color: #ffd0ff; text-shadow: 0 0 5px #ff5bf0, 0 0 12px #ff5bf0; }
+  .skin-gold .piece.w { color: #ffd86b; text-shadow: 0 1px 2px #6b4d00, 0 0 6px rgba(255,200,80,0.6); }
+  .skin-gold .piece.b { color: #2b2b2b; text-shadow: 0 1px 1px rgba(255,255,255,0.25); }
+  .skin-frost .piece.w { color: #f2ffff; text-shadow: 0 0 6px #8ff0ff, 0 1px 1px #1b6e8c; }
+  .skin-frost .piece.b { color: #16384a; text-shadow: 0 0 5px #6fd0ff, 0 1px 1px rgba(255,255,255,0.3); }
   .coord {
     position: absolute;
     font-size: calc(var(--sq, 64px) * 0.18);
@@ -232,6 +241,41 @@
   .tut-nav .btn:disabled { opacity: 0.4; cursor: default; }
   .tut-skip { width: auto; margin-top: 12px; font-size: 12px; color: var(--muted); background: none; border: none; }
   .tut-skip:hover { color: var(--text); background: none; }
+  /* Piece-style shop */
+  .shop-box {
+    background: var(--panel); border-radius: 16px; padding: 22px; text-align: center;
+    box-shadow: 0 14px 44px rgba(0,0,0,0.6); max-width: min(560px, 96vw); width: 100%;
+    animation: pop 0.35s cubic-bezier(0.2, 1.4, 0.5, 1);
+  }
+  .shop-title { font-size: 24px; font-weight: 800; }
+  .shop-sub { font-size: 13px; color: var(--muted); margin: 4px 0 6px; }
+  .shop-have { font-size: 13px; color: var(--accent); font-weight: 700; margin-bottom: 14px; }
+  .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .shop-card {
+    background: rgba(0,0,0,0.22); border: 2px solid transparent; border-radius: 12px;
+    padding: 12px 8px; cursor: pointer; transition: transform 0.12s, border-color 0.12s;
+  }
+  .shop-card:hover { transform: translateY(-2px); }
+  .shop-card.locked { cursor: not-allowed; opacity: 0.92; }
+  .shop-card.equipped { border-color: var(--accent); }
+  .shop-preview {
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 2px;
+    font-size: 26px; line-height: 1; height: 56px; margin-bottom: 8px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--light), var(--dark));
+  }
+  .shop-preview .piece { font-variant-emoji: text; }
+  .shop-preview.locked-q { font-size: 46px; font-weight: 900; color: #0b0d12; background: #707a8c; text-shadow: 0 1px 0 rgba(255,255,255,0.12); }
+  .shop-name { font-size: 14px; font-weight: 700; }
+  .shop-status { font-size: 12px; margin-top: 3px; color: var(--muted); }
+  .shop-status.equipped { color: var(--accent); font-weight: 800; }
+  .shop-status.use { color: #7bd88f; font-weight: 800; }
+  .shop-status.locked { color: #ffb86b; font-weight: 700; }
+  .shop-card.shake { animation: shopShake 0.4s; }
+  @keyframes shopShake {
+    0%,100% { transform: translateX(0); } 20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); }
+  }
+  .pieces-btn { width: 100%; margin: 10px 0 0; }
   .end-emoji { font-size: 52px; line-height: 1; margin-bottom: 10px; }
   .end-title { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
   .end-sub { font-size: 14px; color: var(--muted); margin-bottom: 18px; }
@@ -563,6 +607,16 @@
   </div>
 </div>
 
+<div class="full-overlay" id="shopOverlay" style="display:none">
+  <div class="shop-box">
+    <div class="shop-title">🎁 Piece Styles</div>
+    <div class="shop-sub">Earn XP as you play to unlock new looks for your army.</div>
+    <div class="shop-have" id="shopHave">You have 0 XP</div>
+    <div class="shop-grid" id="shopGrid"></div>
+    <button class="btn primary" id="shopClose">Done</button>
+  </div>
+</div>
+
 <div class="full-overlay" id="tutOverlay" style="display:none">
   <div class="tut-box">
     <div class="tut-step" id="tutStep"></div>
@@ -689,6 +743,8 @@
       </div>
     </div>
 
+    <button class="btn pieces-btn" id="openShop">🎁 Piece styles — unlock with XP</button>
+
     <div class="opponent" id="opponent">
       <div class="opp-face" id="oppFace">🧙</div>
       <div class="opp-info">
@@ -778,6 +834,20 @@
 // plain text glyphs, not colour emoji — so the white/black CSS colours apply
 // consistently across phones (iOS / WhatsApp webview rendered them as emoji).
 const GLYPH = { P:"♟︎", N:"♞︎", B:"♝︎", R:"♜︎", Q:"♛︎", K:"♚︎" };
+// Unlockable piece styles. `glyphs` overrides the shapes; `cls` adds a CSS
+// effect class on the board. `cost` is the lifetime XP needed to unlock.
+const OUTLINE_GLYPHS = { P:"♙", N:"♘", B:"♗", R:"♖", Q:"♕", K:"♔" };
+const LETTER_GLYPHS = { P:"P", N:"N", B:"B", R:"R", Q:"Q", K:"K" };
+const PIECE_SKINS = [
+  { id:"classic", name:"Classic",  cost:0,    glyphs:GLYPH },
+  { id:"outline", name:"Outline",  cost:250,  glyphs:OUTLINE_GLYPHS },
+  { id:"letters", name:"Letters",  cost:600,  glyphs:LETTER_GLYPHS },
+  { id:"neon",    name:"Neon",     cost:1200, glyphs:GLYPH },
+  { id:"gold",    name:"Gold",     cost:2500, glyphs:GLYPH },
+  { id:"frost",   name:"Frost",    cost:4500, glyphs:GLYPH },
+];
+let activeSkin = 0;
+function glyphFor(pieceUpper) { return (PIECE_SKINS[activeSkin].glyphs || GLYPH)[pieceUpper]; }
 const VAL = { P:100, N:320, B:330, R:500, Q:900, K:0 };
 const MATE = 100000;
 
@@ -2022,6 +2092,7 @@ let trophies = 0, xp = 0, pointsAwarded = false, lastScore = null;
 let gameScore = 0;          // points earned in the current game (live, on-board pops)
 let endGemsShown = false;   // fire the end-of-game gem burst only once
 try { trophies = parseInt(localStorage.getItem("chessTrophies")) || 0; xp = parseInt(localStorage.getItem("chessXP")) || 0; } catch (e) {}
+try { const sk = PIECE_SKINS.findIndex(s => s.id === localStorage.getItem("chessSkin")); if (sk > 0 && xp >= PIECE_SKINS[sk].cost) activeSkin = sk; } catch (e) {}
 
 function rankFor(t) { let r = "Pawn"; for (const [th, name] of RANKS) if (t >= th) r = name; return r; }
 function levelFor(x) { return Math.floor(x / 1000) + 1; }
@@ -2130,6 +2201,52 @@ function flyGemsBurst(srcEl, total) {
 function bumpXpBox() {
   const cell = document.getElementById("xpCell");
   if (cell) { cell.classList.remove("pts-bump"); void cell.offsetWidth; cell.classList.add("pts-bump"); }
+}
+
+/* ---- Piece-style shop: unlock new looks with lifetime XP ---- */
+function openShop() { buildShop(); document.getElementById("shopOverlay").style.display = "flex"; }
+function buildShop() {
+  document.getElementById("shopHave").textContent = "You have " + xp + " XP";
+  const grid = document.getElementById("shopGrid");
+  grid.innerHTML = "";
+  PIECE_SKINS.forEach((skin, i) => {
+    const unlocked = xp >= skin.cost;
+    const equipped = i === activeSkin;
+    const card = document.createElement("div");
+    card.className = "shop-card" + (unlocked ? "" : " locked") + (equipped ? " equipped" : "");
+    const preview = document.createElement("div");
+    if (unlocked) {
+      preview.className = "shop-preview skin-" + skin.id;
+      // show a white queen/knight and a black rook/pawn in this style
+      preview.innerHTML =
+        '<span class="piece w">' + skin.glyphs.Q + '</span>' +
+        '<span class="piece w">' + skin.glyphs.N + '</span>' +
+        '<span class="piece b">' + skin.glyphs.R + '</span>' +
+        '<span class="piece b">' + skin.glyphs.P + '</span>';
+    } else {
+      preview.className = "shop-preview locked-q";
+      preview.textContent = "?";   // a big black mystery
+    }
+    const name = document.createElement("div");
+    name.className = "shop-name";
+    name.textContent = unlocked ? skin.name : "???";
+    const status = document.createElement("div");
+    if (equipped) { status.className = "shop-status equipped"; status.textContent = "✓ Equipped"; }
+    else if (unlocked) { status.className = "shop-status use"; status.textContent = "Tap to use"; }
+    else { status.className = "shop-status locked"; status.textContent = "🔒 " + skin.cost + " XP"; }
+    card.append(preview, name, status);
+    card.addEventListener("click", () => {
+      if (xp >= skin.cost) equipSkin(i);
+      else { card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake"); }
+    });
+    grid.appendChild(card);
+  });
+}
+function equipSkin(i) {
+  activeSkin = i;
+  try { localStorage.setItem("chessSkin", PIECE_SKINS[i].id); } catch (e) {}
+  buildShop();
+  render();
 }
 // Tally a move's points: update the "pts this game" total and the live XP box
 // immediately, and return the points so the caller can pop "+N" on the board.
@@ -2541,7 +2658,7 @@ function showPromoPicker(candidates) {
   promoBox.innerHTML = "";
   for (const t of ["Q", "R", "B", "N"]) {
     const btn = document.createElement("button");
-    btn.textContent = GLYPH[t];
+    btn.textContent = glyphFor(t);
     btn.title = { Q: "Queen", R: "Rook", B: "Bishop", N: "Knight" }[t];
     btn.addEventListener("click", () => {
       const m = pendingPromo.find(x => x.promo.toUpperCase() === t);
@@ -2979,6 +3096,8 @@ function showCoachMove() {
 function renderStatus() {
   statusEl.classList.toggle("thinking", thinking && !gameOver);
   boardEl.classList.toggle("thinking", thinking && !gameOver);
+  PIECE_SKINS.forEach(s => boardEl.classList.remove("skin-" + s.id));
+  boardEl.classList.add("skin-" + PIECE_SKINS[activeSkin].id);
   if (gameOver) {
     statusEl.innerHTML = `<span>🏁 ${gameOver.result}</span>`;
   } else if (thinking) {
@@ -3058,7 +3177,7 @@ function render() {
       if (p) {
         const span = document.createElement("span");
         span.className = "piece " + colorOf(p);
-        span.textContent = GLYPH[p.toUpperCase()];
+        span.textContent = glyphFor(p.toUpperCase());
         cell.appendChild(span);
       }
       const mv = legalForSelected.find(m => m.to === sq);
@@ -3203,6 +3322,8 @@ document.getElementById("tutRetry").addEventListener("click", tutRetry);
 document.getElementById("tutSkip").addEventListener("click", armStartGate);
 document.getElementById("tacNext").addEventListener("click", tacticsNext);
 document.getElementById("tacExit").addEventListener("click", finishTactics);
+document.getElementById("openShop").addEventListener("click", openShop);
+document.getElementById("shopClose").addEventListener("click", () => { document.getElementById("shopOverlay").style.display = "none"; });
 </script>
 </body>
 </html>
