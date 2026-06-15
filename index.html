@@ -377,7 +377,7 @@
     background: rgba(0,0,0,0.22); border-radius: 8px; padding: 6px 10px;
   }
   .game-pts b { color: #ffe27a; font-size: 15px; }
-  .game-pts.pts-bump { animation: ptsBump 0.35s ease-out; }
+  .pts-bump { animation: ptsBump 0.35s ease-out; }
   @keyframes ptsBump {
     0% { transform: scale(1); }
     40% { transform: scale(1.12); background: rgba(255,226,122,0.25); }
@@ -675,7 +675,7 @@
   <div class="panel">
     <div class="scorebar" id="scorebar">
       <div class="score-cell"><span class="score-big" id="trophyCount">0</span><span class="score-lbl"><span id="rankName">Pawn</span> 🏆</span></div>
-      <div class="score-cell">
+      <div class="score-cell" id="xpCell">
         <span class="score-big" id="levelNum">Lv 1</span>
         <span class="score-lbl"><span id="xpText">0 XP</span></span>
         <div class="xp-track"><div class="xp-fill" id="xpFill"></div></div>
@@ -1865,11 +1865,11 @@ function showEndOverlay() {
       : `<span class="es-down">${s.realTrophyChange} 🏆</span>`;
     endScoreEl.innerHTML =
       `<div class="es-row"><span>This game</span><span class="es-total">${s.score} pts</span></div>` +
-      `<div class="es-row"><span>Points earned in play</span><span class="es-up">🎯 ${s.gameScore || 0}</span></div>` +
-      `<div class="es-row"><span>Result + captures + speed</span><span>${s.base} + ${s.capPts} + ${s.speedBonus}</span></div>` +
+      `<div class="es-row"><span>Points earned in play (already XP)</span><span class="es-up">🎯 ${s.gameScore || 0}</span></div>` +
+      `<div class="es-row"><span>Result + speed bonus</span><span>${s.base} + ${s.speedBonus}</span></div>` +
       `<div class="es-row"><span>Difficulty bonus</span><span>×${s.diffMult.toFixed(2)}</span></div>` +
       `<div class="es-row"><span>Trophies</span><span>${tro} (${trophies})</span></div>` +
-      `<div class="es-row"><span>XP earned</span><span class="es-up">+${s.xpGain}</span> </div>`;
+      `<div class="es-row"><span>Bonus XP at finish</span><span class="es-up">+${s.xpGain}</span> </div>`;
     endScoreEl.style.display = "block";
   } else {
     endScoreEl.style.display = "none";
@@ -1954,11 +1954,17 @@ function playMove(m) {
     moveTimes.push(moveTimeLimit - timeLeft);
     if (timeLeft <= 5) pressureCount++;
   }
+  const humanMove = st.turn === humanColor;   // captured before the turn flips
   let nota = moveNotation(m);
   makeMove(st, m);
   const key = repKey(st);
   repMap[key] = (repMap[key] || 0) + 1;
   m.repKey = key;
+  // Tally this move's live points (and XP) first, so a game-ending move's
+  // points are included before awardPoints adds the end bonus. The on-board
+  // "+N" pop is shown after render() below (otherwise the re-render wipes it).
+  let movePts = 0;
+  if (humanMove && !tutorialMode) movePts = awardMovePoints(m);
   checkGameEnd();
   computeLiveEval();
   if (gameOver) awardPoints(gameOver.winnerColor ? (gameOver.winnerColor === humanColor ? "win" : "loss") : "draw");
@@ -1974,7 +1980,7 @@ function playMove(m) {
   playMoveSound(!!m.capture, checking, isComputer);
   reactToMove(m, isComputer, checking);
   render();
-  if (!isComputer && !tutorialMode) awardMovePoints(m);   // live points pop on your moves
+  if (movePts) popBoardPoints(m.to, "+" + movePts);   // float the points off the square
 }
 
 function undo() {
@@ -2012,21 +2018,6 @@ function updateScoreUI() {
   xpFillEl.style.width = ((xp % 1000) / 10) + "%";
 }
 
-// Points of enemy material you captured this game (board vs the starting set).
-function capturedPoints() {
-  const aiColor = humanColor === "w" ? "b" : "w";
-  const start = { P: 8, N: 2, B: 2, R: 2, Q: 1 };
-  const now = { P: 0, N: 0, B: 0, R: 0, Q: 0 };
-  for (const p of st.board) {
-    if (!p || colorOf(p) !== aiColor) continue;
-    const up = p.toUpperCase();
-    if (up !== "K") now[up]++;
-  }
-  let pts = 0;
-  for (const t of ["P", "N", "B", "R", "Q"]) pts += Math.max(0, start[t] - now[t]) * SCORE_VAL[t];
-  return pts;
-}
-
 function awardPoints(outcome) {
   if (tutorialMode) return;   // the practice game is for learning, not points
   if (pointsAwarded) return;
@@ -2034,20 +2025,22 @@ function awardPoints(outcome) {
   const level = CHARACTERS[selectedChar].level;
   const diffMult = 1 + level * 0.3;                 // tougher foes are worth more
   const base = outcome === "win" ? 1000 : outcome === "draw" ? 400 : 150;
-  const capPts = capturedPoints();
   const avg = moveTimes.length ? moveTimes.reduce((a, b) => a + b, 0) / moveTimes.length : 20;
   const speedBonus = Math.max(0, Math.round((20 - avg) * 12));
-  const score = Math.round((base + capPts + speedBonus) * diffMult);
+  // Captures are excluded here — they were already awarded as live XP during
+  // play (gameScore). This end bonus is for the result, speed and difficulty.
+  const bonusScore = Math.round((base + speedBonus) * diffMult);
+  const score = gameScore + bonusScore;             // total "this game" points
 
   const dTrophies = outcome === "win" ? (15 + level * 15) : outcome === "draw" ? 5 : -15;
   const before = trophies;
   trophies = Math.max(0, trophies + dTrophies);
   const realTrophyChange = trophies - before;
-  const xpGain = Math.round(score / 5);
+  const xpGain = Math.round(bonusScore / 5);        // extra XP on top of the live points
   xp += xpGain;
   try { localStorage.setItem("chessTrophies", trophies); localStorage.setItem("chessXP", xp); } catch (e) {}
 
-  lastScore = { outcome, base, capPts, speedBonus, diffMult, score, realTrophyChange, xpGain, gameScore };
+  lastScore = { outcome, base, speedBonus, diffMult, score, realTrophyChange, xpGain, gameScore };
   animateScoreGain(before, xp - xpGain, realTrophyChange, xpGain);
 }
 
@@ -2068,16 +2061,28 @@ function popBoardPoints(sq, text) {
   cell.appendChild(s);
   setTimeout(() => s.remove(), 1000);
 }
+// Tally a move's points: update the "pts this game" total and the live XP box
+// immediately, and return the points so the caller can pop "+N" on the board.
 function awardMovePoints(m) {
   const pts = 5 + (m.capture ? SCORE_VAL[m.capture.toUpperCase()] : 0);
   gameScore += pts;
-  popBoardPoints(m.to, "+" + pts);
-  // Update the running total immediately so it always matches the "+N" pop,
-  // then give the badge a quick flash so the change is still noticeable.
   const el = document.getElementById("gamePtsNum");
   if (el) el.textContent = gameScore;
   const box = document.getElementById("gamePts");
   if (box) { box.classList.remove("pts-bump"); void box.offsetWidth; box.classList.add("pts-bump"); }
+  // Every point you earn is also XP — feed it into the Lv / XP box live so it
+  // climbs as you play. (The end-of-game win/speed/difficulty bonus is added on
+  // top in awardPoints, which no longer re-counts captures.)
+  addXpLive(pts);
+  return pts;
+}
+// Add XP during play, persist it, refresh the Lv/XP box and flash it.
+function addXpLive(pts) {
+  xp += pts;
+  try { localStorage.setItem("chessXP", xp); } catch (e) {}
+  updateScoreUI();
+  const cell = document.getElementById("xpCell");
+  if (cell) { cell.classList.remove("pts-bump"); void cell.offsetWidth; cell.classList.add("pts-bump"); }
 }
 
 // Count the score bar up to the new totals and pop a floating "+N" so the
