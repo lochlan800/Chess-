@@ -2071,14 +2071,17 @@ function popBoardPoints(sq, text) {
   cell.appendChild(s);
   setTimeout(() => s.remove(), 1000);
 }
-// A crisp little faceted gem drawn as SVG (sharp at any size, no emoji blur).
+// A crisp little faceted blue gem drawn as SVG (sharp at any size, no emoji
+// blur) — a hexagon with a lighter top crown, shaded sides and two highlights.
 const GEM_SVG =
   '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">' +
-  '<polygon points="6,3 18,3 15,8.5 9,8.5" fill="#cdeeff"/>' +
-  '<polygon points="6,3 9,8.5 12,21" fill="#6cc4f0"/>' +
-  '<polygon points="18,3 15,8.5 12,21" fill="#3f9fe0"/>' +
-  '<polygon points="9,8.5 15,8.5 12,21" fill="#9ad8f7"/>' +
-  '<polygon points="6,3 18,3 15,8.5 9,8.5" fill="none" stroke="#eaf8ff" stroke-width="0.6" stroke-opacity="0.7"/>' +
+  '<polygon points="12,1.5 20.5,6.5 20.5,15.5 12,22.5 3.5,15.5 3.5,6.5" fill="#3597ec"/>' +
+  '<polygon points="3.5,6.5 12,9 12,22.5 3.5,15.5" fill="#46a7f0"/>' +
+  '<polygon points="20.5,6.5 12,9 12,22.5 20.5,15.5" fill="#2b86db"/>' +
+  '<polygon points="12,1.5 20.5,6.5 12,9 3.5,6.5" fill="#6fc0f7"/>' +
+  '<rect x="6.4" y="8.1" width="3.8" height="3.8" rx="1.2" fill="#eaf6ff" transform="rotate(12 8.3 10)"/>' +
+  '<rect x="13.2" y="12.5" width="2.3" height="2.3" rx="0.8" fill="#dcf0ff" transform="rotate(12 14.4 13.6)"/>' +
+  '<polygon points="12,1.5 20.5,6.5 12,9 3.5,6.5" fill="none" stroke="#dff2ff" stroke-width="0.5" stroke-opacity="0.6"/>' +
   '</svg>';
 // A little burst of gems flies from the square you scored on up to the Lv / XP
 // box, which flashes when they land — so the points visibly "go" into your XP.
