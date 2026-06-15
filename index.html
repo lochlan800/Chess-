@@ -396,6 +396,12 @@
     65%  { opacity: 1; transform: translateY(-10px) scale(1); }
     100% { opacity: 0; transform: translateY(-26px) scale(1); }
   }
+  /* Gems that fly from the scoring square to the Lv / XP box */
+  .gem {
+    position: fixed; z-index: 200; pointer-events: none; font-size: 18px;
+    line-height: 1; will-change: transform, opacity;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+  }
   .xp-track { height: 5px; background: rgba(255,255,255,0.12); border-radius: 3px; margin-top: 4px; overflow: hidden; }
   .xp-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width 0.4s; }
   .end-score {
@@ -1980,7 +1986,10 @@ function playMove(m) {
   playMoveSound(!!m.capture, checking, isComputer);
   reactToMove(m, isComputer, checking);
   render();
-  if (movePts) popBoardPoints(m.to, "+" + movePts);   // float the points off the square
+  if (movePts) {
+    popBoardPoints(m.to, "+" + movePts);   // float the points off the square
+    flyGemsToXp(m.to, movePts);            // …and send gems flying to the XP box
+  }
 }
 
 function undo() {
@@ -2061,6 +2070,45 @@ function popBoardPoints(sq, text) {
   cell.appendChild(s);
   setTimeout(() => s.remove(), 1000);
 }
+// A little burst of gems flies from the square you scored on up to the Lv / XP
+// box, which flashes when they land — so the points visibly "go" into your XP.
+function flyGemsToXp(sq, pts) {
+  const cell = boardEl.querySelector('[data-sq="' + sq + '"]');
+  const target = document.getElementById("xpCell");
+  if (!cell || !target) { bumpXpBox(); return; }
+  const c = cell.getBoundingClientRect();
+  const t = target.getBoundingClientRect();
+  const tx = t.left + t.width / 2, ty = t.top + t.height / 2;
+  const n = Math.max(5, Math.min(10, Math.round(pts / 10)));   // bigger rewards = more gems
+  let landed = 0;
+  for (let i = 0; i < n; i++) {
+    const ox = (Math.random() - 0.5) * c.width * 0.7;
+    const oy = (Math.random() - 0.5) * c.height * 0.7;
+    const sx = c.left + c.width / 2 + ox, sy = c.top + c.height / 2 + oy;
+    const g = document.createElement("div");
+    g.className = "gem";
+    g.textContent = "💎";
+    g.style.left = sx + "px";
+    g.style.top = sy + "px";
+    document.body.appendChild(g);
+    const dx = tx - sx, dy = ty - sy;
+    const arc = (Math.random() - 0.5) * 120;          // curve sideways on the way up
+    const anim = g.animate([
+      { transform: "translate(-50%,-50%) translate(0px,0px) scale(0.5)", opacity: 0 },
+      { transform: "translate(-50%,-50%) translate(0px,-6px) scale(1.15)", opacity: 1, offset: 0.15 },
+      { transform: "translate(-50%,-50%) translate(" + (dx * 0.5 + arc) + "px," + (dy * 0.5 - 38) + "px) scale(1)", opacity: 1, offset: 0.55 },
+      { transform: "translate(-50%,-50%) translate(" + dx + "px," + dy + "px) scale(0.35)", opacity: 0.15 }
+    ], { duration: 620 + Math.random() * 180, delay: i * 55, easing: "cubic-bezier(.45,.05,.55,1)", fill: "forwards" });
+    anim.onfinish = () => {
+      g.remove();
+      if (++landed === n) bumpXpBox();   // flash the box once the gems arrive
+    };
+  }
+}
+function bumpXpBox() {
+  const cell = document.getElementById("xpCell");
+  if (cell) { cell.classList.remove("pts-bump"); void cell.offsetWidth; cell.classList.add("pts-bump"); }
+}
 // Tally a move's points: update the "pts this game" total and the live XP box
 // immediately, and return the points so the caller can pop "+N" on the board.
 function awardMovePoints(m) {
@@ -2076,13 +2124,12 @@ function awardMovePoints(m) {
   addXpLive(pts);
   return pts;
 }
-// Add XP during play, persist it, refresh the Lv/XP box and flash it.
+// Add XP during play, persist it, refresh the Lv/XP box. The box's flash is
+// triggered by the flying gems landing (flyGemsToXp), not here.
 function addXpLive(pts) {
   xp += pts;
   try { localStorage.setItem("chessXP", xp); } catch (e) {}
   updateScoreUI();
-  const cell = document.getElementById("xpCell");
-  if (cell) { cell.classList.remove("pts-bump"); void cell.offsetWidth; cell.classList.add("pts-bump"); }
 }
 
 // Count the score bar up to the new totals and pop a floating "+N" so the
