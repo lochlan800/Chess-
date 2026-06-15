@@ -1422,6 +1422,7 @@ function resetGame() {
   liveEval = 0;
   coachHint = null;
   gameScore = 0;
+  endGemsShown = false;
   renderGamePts();
   render();
   say("greet");
@@ -1889,6 +1890,13 @@ function showEndOverlay() {
   newBtn.classList.toggle("primary", !lost);
   reviewBtn.style.display = history.length ? "" : "none";
   endOverlay.style.display = "flex";
+  // Celebrate the total: once the end screen is up, send a gem burst from the
+  // "this game" total down into the Lv / XP box (only once per game).
+  if (lastScore && !endGemsShown) {
+    endGemsShown = true;
+    const total = (lastScore.gameScore || 0) + (lastScore.xpGain || 0);
+    setTimeout(() => flyGemsBurst(endScoreEl.querySelector(".es-total"), total), 450);
+  }
 }
 
 // Returns a plain-English reason when the position can never be won (a draw by
@@ -1987,10 +1995,7 @@ function playMove(m) {
   playMoveSound(!!m.capture, checking, isComputer);
   reactToMove(m, isComputer, checking);
   render();
-  if (movePts) {
-    popBoardPoints(m.to, "+" + movePts);   // float the points off the square
-    flyGemsToXp(m.to, movePts);            // …and send gems flying to the XP box
-  }
+  if (movePts) popBoardPoints(m.to, "+" + movePts);   // float the points off the square
 }
 
 function undo() {
@@ -2015,6 +2020,7 @@ const SCORE_VAL = { P: 10, N: 30, B: 30, R: 50, Q: 90 };
 const RANKS = [[0, "Pawn"], [120, "Knight"], [300, "Bishop"], [600, "Rook"], [1000, "Queen"], [1600, "Grandmaster"]];
 let trophies = 0, xp = 0, pointsAwarded = false, lastScore = null;
 let gameScore = 0;          // points earned in the current game (live, on-board pops)
+let endGemsShown = false;   // fire the end-of-game gem burst only once
 try { trophies = parseInt(localStorage.getItem("chessTrophies")) || 0; xp = parseInt(localStorage.getItem("chessXP")) || 0; } catch (e) {}
 
 function rankFor(t) { let r = "Pawn"; for (const [th, name] of RANKS) if (t >= th) r = name; return r; }
@@ -2083,21 +2089,23 @@ const GEM_SVG =
   '<rect x="13.2" y="12.5" width="2.3" height="2.3" rx="0.8" fill="#dcf0ff" transform="rotate(12 14.4 13.6)"/>' +
   '<polygon points="12,1.5 20.5,6.5 12,9 3.5,6.5" fill="none" stroke="#dff2ff" stroke-width="0.5" stroke-opacity="0.6"/>' +
   '</svg>';
-// A little burst of gems flies from the square you scored on up to the Lv / XP
-// box, which flashes when they land — so the points visibly "go" into your XP.
-function flyGemsToXp(sq, pts) {
-  const cell = boardEl.querySelector('[data-sq="' + sq + '"]');
+// At the end of a game, a burst of gems flies from the end-screen total down
+// into the Lv / XP box, which flashes when they land — so the points you earned
+// visibly "go" into your XP. (Only at the end now, not on every move.)
+function flyGemsBurst(srcEl, total) {
   const target = document.getElementById("xpCell");
-  if (!cell || !target) { bumpXpBox(); return; }
-  const c = cell.getBoundingClientRect();
+  if (!target) return;
   const t = target.getBoundingClientRect();
   const tx = t.left + t.width / 2, ty = t.top + t.height / 2;
-  const n = Math.max(5, Math.min(10, Math.round(pts / 10)));   // bigger rewards = more gems
+  const s = (srcEl && srcEl.getBoundingClientRect) ? srcEl.getBoundingClientRect() : null;
+  const cx = s ? s.left + s.width / 2 : window.innerWidth / 2;
+  const cy = s ? s.top + s.height / 2 : window.innerHeight / 3;
+  const spreadW = s ? Math.min(s.width, 140) : 140;
+  const n = Math.max(6, Math.min(16, Math.round(total / 40)));   // more points = more gems
   let landed = 0;
   for (let i = 0; i < n; i++) {
-    const ox = (Math.random() - 0.5) * c.width * 0.7;
-    const oy = (Math.random() - 0.5) * c.height * 0.7;
-    const sx = c.left + c.width / 2 + ox, sy = c.top + c.height / 2 + oy;
+    const sx = cx + (Math.random() - 0.5) * spreadW;
+    const sy = cy + (Math.random() - 0.5) * 18;
     const g = document.createElement("div");
     g.className = "gem";
     g.innerHTML = GEM_SVG;
@@ -2106,13 +2114,13 @@ function flyGemsToXp(sq, pts) {
     g.style.opacity = "0";   // stay hidden until this gem's turn to launch
     document.body.appendChild(g);
     const dx = tx - sx, dy = ty - sy;
-    const arc = (Math.random() - 0.5) * 120;          // curve sideways on the way up
+    const arc = (Math.random() - 0.5) * 100;          // gentle sideways curve
     const anim = g.animate([
       { transform: "translate(-50%,-50%) translate(0px,0px) scale(0.5)", opacity: 0 },
-      { transform: "translate(-50%,-50%) translate(0px,-6px) scale(1.15)", opacity: 1, offset: 0.15 },
-      { transform: "translate(-50%,-50%) translate(" + (dx * 0.5 + arc) + "px," + (dy * 0.5 - 38) + "px) scale(1)", opacity: 1, offset: 0.55 },
+      { transform: "translate(-50%,-50%) translate(0px,-8px) scale(1.15)", opacity: 1, offset: 0.15 },
+      { transform: "translate(-50%,-50%) translate(" + (dx * 0.5 + arc) + "px," + (dy * 0.5 - 22) + "px) scale(1)", opacity: 1, offset: 0.55 },
       { transform: "translate(-50%,-50%) translate(" + dx + "px," + dy + "px) scale(0.35)", opacity: 0.15 }
-    ], { duration: 600 + Math.random() * 160, delay: i * 45, easing: "cubic-bezier(.45,.05,.55,1)", fill: "both" });
+    ], { duration: 650 + Math.random() * 200, delay: i * 45, easing: "cubic-bezier(.45,.05,.55,1)", fill: "both" });
     anim.onfinish = () => {
       g.remove();
       if (++landed === n) bumpXpBox();   // flash the box once the gems arrive
@@ -2138,8 +2146,8 @@ function awardMovePoints(m) {
   addXpLive(pts);
   return pts;
 }
-// Add XP during play, persist it, refresh the Lv/XP box. The box's flash is
-// triggered by the flying gems landing (flyGemsToXp), not here.
+// Add XP during play, persist it, and refresh the Lv/XP box. The celebratory
+// gem burst + box flash happen once at the end of the game (flyGemsBurst).
 function addXpLive(pts) {
   xp += pts;
   try { localStorage.setItem("chessXP", xp); } catch (e) {}
