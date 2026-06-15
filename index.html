@@ -398,10 +398,11 @@
   }
   /* Gems that fly from the scoring square to the Lv / XP box */
   .gem {
-    position: fixed; z-index: 200; pointer-events: none; font-size: 18px;
-    line-height: 1; will-change: transform, opacity;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+    position: fixed; z-index: 200; pointer-events: none;
+    width: 20px; height: 20px; line-height: 0; will-change: transform, opacity;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
   }
+  .gem svg { display: block; }
   .xp-track { height: 5px; background: rgba(255,255,255,0.12); border-radius: 3px; margin-top: 4px; overflow: hidden; }
   .xp-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width 0.4s; }
   .end-score {
@@ -2070,6 +2071,15 @@ function popBoardPoints(sq, text) {
   cell.appendChild(s);
   setTimeout(() => s.remove(), 1000);
 }
+// A crisp little faceted gem drawn as SVG (sharp at any size, no emoji blur).
+const GEM_SVG =
+  '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<polygon points="6,3 18,3 15,8.5 9,8.5" fill="#cdeeff"/>' +
+  '<polygon points="6,3 9,8.5 12,21" fill="#6cc4f0"/>' +
+  '<polygon points="18,3 15,8.5 12,21" fill="#3f9fe0"/>' +
+  '<polygon points="9,8.5 15,8.5 12,21" fill="#9ad8f7"/>' +
+  '<polygon points="6,3 18,3 15,8.5 9,8.5" fill="none" stroke="#eaf8ff" stroke-width="0.6" stroke-opacity="0.7"/>' +
+  '</svg>';
 // A little burst of gems flies from the square you scored on up to the Lv / XP
 // box, which flashes when they land — so the points visibly "go" into your XP.
 function flyGemsToXp(sq, pts) {
@@ -2087,9 +2097,10 @@ function flyGemsToXp(sq, pts) {
     const sx = c.left + c.width / 2 + ox, sy = c.top + c.height / 2 + oy;
     const g = document.createElement("div");
     g.className = "gem";
-    g.textContent = "💎";
+    g.innerHTML = GEM_SVG;
     g.style.left = sx + "px";
     g.style.top = sy + "px";
+    g.style.opacity = "0";   // stay hidden until this gem's turn to launch
     document.body.appendChild(g);
     const dx = tx - sx, dy = ty - sy;
     const arc = (Math.random() - 0.5) * 120;          // curve sideways on the way up
@@ -2098,7 +2109,7 @@ function flyGemsToXp(sq, pts) {
       { transform: "translate(-50%,-50%) translate(0px,-6px) scale(1.15)", opacity: 1, offset: 0.15 },
       { transform: "translate(-50%,-50%) translate(" + (dx * 0.5 + arc) + "px," + (dy * 0.5 - 38) + "px) scale(1)", opacity: 1, offset: 0.55 },
       { transform: "translate(-50%,-50%) translate(" + dx + "px," + dy + "px) scale(0.35)", opacity: 0.15 }
-    ], { duration: 620 + Math.random() * 180, delay: i * 55, easing: "cubic-bezier(.45,.05,.55,1)", fill: "forwards" });
+    ], { duration: 600 + Math.random() * 160, delay: i * 45, easing: "cubic-bezier(.45,.05,.55,1)", fill: "both" });
     anim.onfinish = () => {
       g.remove();
       if (++landed === n) bumpXpBox();   // flash the box once the gems arrive
