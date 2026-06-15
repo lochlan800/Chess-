@@ -264,6 +264,12 @@
     padding: 12px 14px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
   }
+  .tac-step { font-size: 12px; color: var(--accent); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; }
+  .tac-title { font-size: 18px; font-weight: 800; margin: 3px 0 5px; }
+  .tac-text { font-size: 13.5px; color: var(--text); line-height: 1.5; margin-bottom: 8px; }
+  .tac-term { font-size: 12.5px; color: #ffe27a; background: rgba(255,226,122,0.1); border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; }
+  .tac-feedback { font-size: 14px; min-height: 22px; line-height: 1.4; margin-bottom: 10px; font-weight: 600; }
+  .tac-feedback.good { color: #7bd88f; } .tac-feedback.warn { color: #ffd479; }
   .rv-accuracy {
     display: flex; align-items: baseline; justify-content: center; gap: 8px;
     background: rgba(0,0,0,0.28); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px;
@@ -537,6 +543,7 @@
     <h1 class="start-title">Chess</h1>
     <p class="start-sub">New to chess? Learn the pieces first.</p>
     <button class="btn primary start-big" id="startBeginner">📚 Beginner — learn to play</button>
+    <button class="btn start-big" id="startTactics">🎯 Tactics — openings &amp; patterns</button>
     <button class="btn start-big" id="startPlay">▶ Start game</button>
   </div>
 </div>
@@ -601,6 +608,18 @@
       </div>
 
     </div>
+    </div>
+
+    <div class="reviewbar" id="tacticsBar" style="display:none">
+      <div class="tac-step" id="tacStep"></div>
+      <h3 class="tac-title" id="tacTitle"></h3>
+      <p class="tac-text" id="tacText"></p>
+      <div class="tac-term" id="tacTerm" style="display:none"></div>
+      <div class="tac-feedback" id="tacFeedback"></div>
+      <div class="rv-nav">
+        <button class="btn" id="tacNext" disabled>Next ▶</button>
+        <button class="btn" id="tacExit">Skip</button>
+      </div>
     </div>
 
     <div class="reviewbar" id="reviewBar" style="display:none">
@@ -1299,7 +1318,15 @@ let tutIdx = 0, tutState = null;
 let coachHint = null;       // {from,to} suggested move arrow for the "Show me" coach
 let awaitingStart = false;  // board is locked until the player picks an opponent
 let aiToken = 0;            // invalidates stale/duplicate scheduled AI moves
+let tacticsMode = false, tacticsIdx = 0, tacticsFromBeginner = false, tacticsSolved = false;
 const startOverlay = document.getElementById("startOverlay");
+const tacticsBar = document.getElementById("tacticsBar");
+const tacStepEl = document.getElementById("tacStep");
+const tacTitleEl = document.getElementById("tacTitle");
+const tacTextEl = document.getElementById("tacText");
+const tacTermEl = document.getElementById("tacTerm");
+const tacFeedbackEl = document.getElementById("tacFeedback");
+const tacNextBtn = document.getElementById("tacNext");
 const tutOverlay = document.getElementById("tutOverlay");
 const tutBoardEl = document.getElementById("tutBoard");
 const tutTitleEl = document.getElementById("tutTitle");
@@ -1367,6 +1394,8 @@ function resetGame() {
   endOverlay.style.display = "none";
   reviewOverlay.style.display = "none";
   reviewBar.style.display = "none";
+  tacticsMode = false;
+  tacticsBar.style.display = "none";
   reviewAbort = true;
   reviewMode = false;
   reviewSteps = [];
@@ -2286,7 +2315,7 @@ function computeLiveEval() {
   liveEval = st.turn === "w" ? sc : -sc;
 }
 function updateEvalBar() {
-  if (reviewMode) { evalBarEl.style.display = "none"; return; }
+  if (reviewMode || tacticsMode) { evalBarEl.style.display = "none"; return; }
   evalBarEl.style.display = "";
   const humanCp = liveEval * (humanColor === "w" ? 1 : -1);   // + = you're ahead
   const c = Math.max(-2000, Math.min(2000, humanCp));
@@ -2327,7 +2356,7 @@ function stopTimer() {
   timerEl.style.display = "none";
 }
 function syncTimer() {
-  const yourTurn = moveTimeLimit > 0 && !awaitingStart && !gameOver && !thinking && !reviewMode && !pendingPromo && st.turn === humanColor;
+  const yourTurn = moveTimeLimit > 0 && !awaitingStart && !tacticsMode && !gameOver && !thinking && !reviewMode && !pendingPromo && st.turn === humanColor;
   if (yourTurn) { if (!timerRunning) startTimer(); }
   else stopTimer();
 }
@@ -2349,7 +2378,7 @@ function onTimeout() {
 function maybeAiTurn() {
   // `thinking` guard stops a second AI move being scheduled on top of one
   // already in flight (which was causing turns to be skipped).
-  if (awaitingStart || gameOver || thinking || st.turn === humanColor) return;
+  if (tacticsMode || awaitingStart || gameOver || thinking || st.turn === humanColor) return;
   const tok = ++aiToken;                          // this scheduling's identity
   const stale = () => tok !== aiToken;            // a reset/new game invalidates it
   if (tutorialMode) {
@@ -2388,6 +2417,7 @@ function maybeAiTurn() {
 }
 
 function onSquareClick(sq) {
+  if (tacticsMode) { onTacticsClick(sq); return; }
   if (awaitingStart || reviewMode || gameOver || thinking || pendingPromo || st.turn !== humanColor) return;
   const p = st.board[sq];
 
@@ -2574,9 +2604,115 @@ function onTutClick(idx) {
   tutFeedback(L.test ? ("Click the " + PIECE_NAME[L.piece] + ", then where it can move.")
                      : "Click the piece, then one of the glowing squares.", "warn");
 }
-function tutNext() { if (tutIdx < TUTORIAL_LESSONS.length - 1) loadLesson(tutIdx + 1); else startCoachedGame(); }
+function tutNext() { if (tutIdx < TUTORIAL_LESSONS.length - 1) loadLesson(tutIdx + 1); else openTactics(true); }
 function tutBack() { if (tutIdx > 0) loadLesson(tutIdx - 1); }
 function tutRetry() { loadLesson(tutIdx); }
+
+/* ---- Tactics course: guided openings + quiz on the full board ---- */
+function ix(nm) { return (8 - (+nm[1])) * 8 + (nm.charCodeAt(0) - 97); }
+function setupFEN(fen) {
+  const parts = fen.split(" "), pp = parts[0], turn = parts[1] || "w", castle = parts[2] || "-", ep = parts[3] || "-";
+  st = { board: new Array(64).fill(null), turn,
+         castle: { K: castle.includes("K"), Q: castle.includes("Q"), k: castle.includes("k"), q: castle.includes("q") },
+         ep: -1, half: 0 };
+  let sq = 0;
+  for (const ch of pp) { if (ch === "/") continue; if (/\d/.test(ch)) sq += +ch; else st.board[sq++] = ch; }
+  if (ep !== "-") st.ep = ix(ep);
+  history = []; repMap = Object.create(null);
+}
+const TACTICS = [
+  { step: "Opening 1 of 4", setup: "start", title: "Control the centre",
+    text: "The centre squares (d4, d5, e4, e5) are the most valuable — controlling them gives your pieces more reach. Grab one now: push your e-pawn two squares to e4.",
+    term: "The centre — fight for d4/d5/e4/e5 from move one.",
+    expect: [["e2", "e4"]], reply: ["e7", "e5"], hint: true },
+  { step: "Opening 2 of 4", setup: "continue", title: "Develop a knight",
+    text: "\"Development\" means getting pieces off the back rank toward the centre. Play your knight to f3 — it develops and attacks the e5 pawn.",
+    term: "Development — bring knights and bishops out early (knights before bishops).",
+    expect: [["g1", "f3"]], reply: ["b8", "c6"], hint: true },
+  { step: "Opening 3 of 4", setup: "continue", title: "Develop a bishop",
+    text: "Bring your bishop to c4, aiming at black's weak f7 square. This well-known line is the Italian Game.",
+    term: "Italian Game — 1.e4 e5 2.Nf3 Nc6 3.Bc4.",
+    expect: [["f1", "c4"]], reply: ["f8", "c5"], hint: true },
+  { step: "Opening 4 of 4", setup: "continue", title: "Castle to safety",
+    text: "Tuck your king into the corner and connect your rooks. Castle kingside — click the king, then the g1 square.",
+    term: "Castling — get your king safe early; don't leave it in the centre.",
+    expect: [["e1", "g1"]], reply: ["g8", "f6"], hint: true },
+  { step: "Quiz 1 of 3", setup: "r1bqkb1r/pppp1ppp/2n5/4p3/4n3/5N2/PPPPQPPP/RNB1KB1R w KQkq -",
+    title: "Quiz: win a free piece", text: "Black's knight in the centre is undefended. Win it for free — no hint this time!",
+    expect: [["e2", "e4"]], hint: false, win: "Yes! Always scan for undefended enemy pieces to grab." },
+  { step: "Quiz 2 of 3", setup: "r3k2r/ppp1pppp/8/1N6/8/8/PPPP1PPP/R1BQKB1R w KQkq -",
+    title: "Quiz: find the fork", text: "A 'fork' is one piece attacking two at once. Find the knight move that checks the king AND hits the rook.",
+    term: "Fork — one piece attacking two enemy pieces simultaneously.",
+    expect: [["b5", "c7"]], hint: false, win: "Fork! It's check, and next move you take the rook." },
+  { step: "Quiz 3 of 3", setup: "6k1/5ppp/8/8/8/8/8/R6K w - -",
+    title: "Quiz: checkmate in one", text: "The black king is stuck behind its own pawns. Deliver checkmate in one with your rook on the back rank.",
+    term: "Checkmate — the king is attacked with no legal escape. That wins the game.",
+    expect: [["a1", "a8"]], hint: false, win: "Checkmate! That's how every game is won. 🏆" },
+];
+function tacFeedback(text, kind) { tacFeedbackEl.textContent = text; tacFeedbackEl.className = "tac-feedback " + (kind || ""); }
+function openTactics(fromBeginner) {
+  tacticsFromBeginner = !!fromBeginner;
+  tacticsMode = true; tutorialMode = false; reviewMode = false; awaitingStart = false; gameOver = null;
+  humanColor = "w";
+  startOverlay.style.display = "none"; tutOverlay.style.display = "none";
+  document.getElementById("startGate").style.display = "none";
+  tacticsBar.style.display = "block";
+  tacticsIdx = 0; loadTactics(0);
+}
+function loadTactics(i) {
+  tacticsIdx = i; const T = TACTICS[i];
+  if (T.setup === "start") { st = newState(); history = []; repMap = Object.create(null); }
+  else if (T.setup !== "continue") setupFEN(T.setup);
+  humanColor = "w"; selected = -1; legalForSelected = []; tacticsSolved = false; gameOver = null;
+  tacStepEl.textContent = T.step;
+  tacTitleEl.textContent = T.title;
+  tacTextEl.textContent = T.text;
+  tacTermEl.style.display = T.term ? "block" : "none";
+  tacTermEl.textContent = T.term ? ("💡 " + T.term) : "";
+  tacFeedbackEl.textContent = ""; tacFeedbackEl.className = "tac-feedback";
+  tacNextBtn.disabled = true;
+  tacNextBtn.textContent = i === TACTICS.length - 1 ? "Finish ▶" : "Next ▶";
+  coachHint = T.hint ? { from: ix(T.expect[0][0]), to: ix(T.expect[0][1]) } : null;
+  render();
+}
+function onTacticsClick(sq) {
+  if (tacticsSolved) return;
+  const T = TACTICS[tacticsIdx];
+  const p = st.board[sq];
+  if (selected >= 0) {
+    const cand = legalForSelected.find(m => m.to === sq);
+    if (cand) {
+      const ok = T.expect.some(e => cand.from === ix(e[0]) && cand.to === ix(e[1]));
+      if (ok) { applyTacticsMove(cand, T); return; }
+      tacFeedback("Not the move we're after — " + (T.hint ? "follow the highlighted arrow." : "try again."), "warn");
+      selected = -1; legalForSelected = []; render(); return;
+    }
+  }
+  if (p && colorOf(p) === humanColor) { selected = sq; legalForSelected = legalMoves(st).filter(m => m.from === sq); }
+  else { selected = -1; legalForSelected = []; }
+  render();
+}
+function applyTacticsMove(cand, T) {
+  makeMove(st, cand); history.push(cand);
+  selected = -1; legalForSelected = []; coachHint = null;
+  playMoveSound(!!cand.capture, false, false);
+  render();
+  const done = () => { tacticsSolved = true; tacNextBtn.disabled = false; tacFeedback(T.win || "Nice — correct! Press Next ▶", "good"); render(); };
+  if (T.reply) {
+    setTimeout(() => {
+      if (!tacticsMode) return;
+      const rep = legalMoves(st).find(m => m.from === ix(T.reply[0]) && m.to === ix(T.reply[1]));
+      if (rep) { makeMove(st, rep); history.push(rep); playMoveSound(!!rep.capture, false, false); }
+      done(); render();
+    }, 450);
+  } else { done(); }
+}
+function tacticsNext() { if (tacticsIdx < TACTICS.length - 1) loadTactics(tacticsIdx + 1); else finishTactics(); }
+function finishTactics() {
+  tacticsMode = false; tacticsBar.style.display = "none"; coachHint = null;
+  if (tacticsFromBeginner) startCoachedGame(); else armStartGate();
+}
+
 function startCoachedGame() {
   tutOverlay.style.display = "none";
   // Practice against Pip the Sprite (the friendliest face), but playing worse
@@ -2910,10 +3046,13 @@ function armStartGate() {
 // Start screen + tutorial wiring
 document.getElementById("startPlay").addEventListener("click", armStartGate);
 document.getElementById("startBeginner").addEventListener("click", openTutorial);
+document.getElementById("startTactics").addEventListener("click", () => openTactics(false));
 tutNextBtn.addEventListener("click", tutNext);
 tutBackBtn.addEventListener("click", tutBack);
 document.getElementById("tutRetry").addEventListener("click", tutRetry);
 document.getElementById("tutSkip").addEventListener("click", armStartGate);
+document.getElementById("tacNext").addEventListener("click", tacticsNext);
+document.getElementById("tacExit").addEventListener("click", finishTactics);
 </script>
 </body>
 </html>
