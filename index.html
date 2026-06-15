@@ -133,7 +133,11 @@
   .piece.b { color: #1a1a1a; text-shadow: 0 1px 2px rgba(255,255,255,0.25); }
   /* Unlockable piece styles (skins). The skin class sits on the board (and on
      the shop preview tiles) so the same rules style both. */
-  .skin-letters .piece { font-weight: 900; font-family: "Trebuchet MS", Verdana, sans-serif; }
+  /* Themed emoji skins: render in full colour; darken the black army so the
+     two sides are still easy to tell apart. */
+  .skin-emoji .piece { font-variant-emoji: emoji; text-shadow: none; }
+  .skin-emoji .piece.w { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.45)); }
+  .skin-emoji .piece.b { filter: brightness(0.5) saturate(0.85) contrast(1.05) drop-shadow(0 1px 1px rgba(255,255,255,0.3)); }
   .skin-neon .piece.w { color: #d7fbff; text-shadow: 0 0 5px #38e0ff, 0 0 12px #38e0ff; }
   .skin-neon .piece.b { color: #ffd0ff; text-shadow: 0 0 5px #ff5bf0, 0 0 12px #ff5bf0; }
   .skin-gold .piece.w { color: #ffd86b; text-shadow: 0 1px 2px #6b4d00, 0 0 6px rgba(255,200,80,0.6); }
@@ -263,7 +267,6 @@
     font-size: 26px; line-height: 1; height: 56px; margin-bottom: 8px; border-radius: 8px;
     background: linear-gradient(135deg, var(--light), var(--dark));
   }
-  .shop-preview .piece { font-variant-emoji: text; }
   .shop-preview.locked-q { font-size: 46px; font-weight: 900; color: #0b0d12; background: #707a8c; text-shadow: 0 1px 0 rgba(255,255,255,0.12); }
   .shop-name { font-size: 14px; font-weight: 700; }
   .shop-status { font-size: 12px; margin-top: 3px; color: var(--muted); }
@@ -834,17 +837,24 @@
 // plain text glyphs, not colour emoji — so the white/black CSS colours apply
 // consistently across phones (iOS / WhatsApp webview rendered them as emoji).
 const GLYPH = { P:"♟︎", N:"♞︎", B:"♝︎", R:"♜︎", Q:"♛︎", K:"♚︎" };
-// Unlockable piece styles. `glyphs` overrides the shapes; `cls` adds a CSS
-// effect class on the board. `cost` is the lifetime XP needed to unlock.
-const OUTLINE_GLYPHS = { P:"♙", N:"♘", B:"♗", R:"♖", Q:"♕", K:"♔" };
-const LETTER_GLYPHS = { P:"P", N:"N", B:"B", R:"R", Q:"Q", K:"K" };
+// Unlockable piece styles. `glyphs` is the P/N/B/R/Q/K symbol set; `emoji:true`
+// marks themed emoji skins (rendered in colour, dark army darkened by CSS).
+// `cost` is the lifetime XP needed to unlock.
 const PIECE_SKINS = [
-  { id:"classic", name:"Classic",  cost:0,    glyphs:GLYPH },
-  { id:"outline", name:"Outline",  cost:250,  glyphs:OUTLINE_GLYPHS },
-  { id:"letters", name:"Letters",  cost:600,  glyphs:LETTER_GLYPHS },
-  { id:"neon",    name:"Neon",     cost:1200, glyphs:GLYPH },
-  { id:"gold",    name:"Gold",     cost:2500, glyphs:GLYPH },
-  { id:"frost",   name:"Frost",    cost:4500, glyphs:GLYPH },
+  { id:"classic",    name:"Classic",          cost:0 },
+  { id:"medieval",   name:"Medieval",         cost:500,   emoji:true, glyphs:{ P:"🛡️", N:"🐴", B:"⛪", R:"🏰", Q:"👸", K:"🤴" } },
+  { id:"neon",       name:"Neon",             cost:1000 },
+  { id:"halloween",  name:"Halloween",        cost:1500,  emoji:true, glyphs:{ P:"💀", N:"🦇", B:"👻", R:"🏚️", Q:"🧙‍♀️", K:"🎃" } },
+  { id:"christmas",  name:"Christmas",        cost:2200,  emoji:true, glyphs:{ P:"🎁", N:"🦌", B:"⛄", R:"🎄", Q:"🤶", K:"🎅" } },
+  { id:"gold",       name:"Gold",             cost:3000 },
+  { id:"viking",     name:"Viking",           cost:4000,  emoji:true, glyphs:{ P:"⚔️", N:"🐗", B:"🐺", R:"🚢", Q:"🛡️", K:"🪓" } },
+  { id:"easter",     name:"Easter",           cost:5000,  emoji:true, glyphs:{ P:"🥚", N:"🐑", B:"🌷", R:"🧺", Q:"🐣", K:"🐰" } },
+  { id:"frost",      name:"Frost",            cost:6500 },
+  { id:"victorian",  name:"Victorian",        cost:8000,  emoji:true, glyphs:{ P:"🫖", N:"🐎", B:"☂️", R:"🏛️", Q:"👒", K:"🎩" } },
+  { id:"fantasy",    name:"Fantasy",          cost:10000, emoji:true, glyphs:{ P:"🍄", N:"🐉", B:"🦄", R:"🏰", Q:"🧚", K:"🧙" } },
+  { id:"futuristic", name:"Futuristic",       cost:13000, emoji:true, glyphs:{ P:"🔋", N:"🚀", B:"👽", R:"🛰️", Q:"🛸", K:"🤖" } },
+  { id:"living",     name:"Living",           cost:17000, emoji:true, glyphs:{ P:"🐭", N:"🐴", B:"🦊", R:"🐘", Q:"🦅", K:"🦁" } },
+  { id:"lotr",       name:"Lord of the Rings",cost:22000, emoji:true, glyphs:{ P:"⚔️", N:"🦅", B:"🧙", R:"🗼", Q:"🧝", K:"💍" } },
 ];
 let activeSkin = 0;
 function glyphFor(pieceUpper) { return (PIECE_SKINS[activeSkin].glyphs || GLYPH)[pieceUpper]; }
@@ -2101,7 +2111,7 @@ function updateScoreUI() {
   trophyCountEl.textContent = trophies;
   rankNameEl.textContent = rankFor(trophies);
   levelNumEl.textContent = "Lv " + levelFor(xp);
-  xpTextEl.textContent = (xp % 1000) + " / 1000 XP";
+  xpTextEl.textContent = xp + " XP";
   xpFillEl.style.width = ((xp % 1000) / 10) + "%";
 }
 
@@ -2216,13 +2226,14 @@ function buildShop() {
     card.className = "shop-card" + (unlocked ? "" : " locked") + (equipped ? " equipped" : "");
     const preview = document.createElement("div");
     if (unlocked) {
-      preview.className = "shop-preview skin-" + skin.id;
+      const gl = skin.glyphs || GLYPH;
+      preview.className = "shop-preview skin-" + skin.id + (skin.emoji ? " skin-emoji" : "");
       // show a white queen/knight and a black rook/pawn in this style
       preview.innerHTML =
-        '<span class="piece w">' + skin.glyphs.Q + '</span>' +
-        '<span class="piece w">' + skin.glyphs.N + '</span>' +
-        '<span class="piece b">' + skin.glyphs.R + '</span>' +
-        '<span class="piece b">' + skin.glyphs.P + '</span>';
+        '<span class="piece w">' + gl.Q + '</span>' +
+        '<span class="piece w">' + gl.N + '</span>' +
+        '<span class="piece b">' + gl.R + '</span>' +
+        '<span class="piece b">' + gl.P + '</span>';
     } else {
       preview.className = "shop-preview locked-q";
       preview.textContent = "?";   // a big black mystery
@@ -2294,7 +2305,7 @@ function animateScoreGain(beforeT, beforeXp, dT, dX) {
   animateCount(v => trophyCountEl.textContent = v, beforeT, trophies, 1100);
   animateCount(v => {
     levelNumEl.textContent = "Lv " + levelFor(v);
-    xpTextEl.textContent = (v % 1000) + " / 1000 XP";
+    xpTextEl.textContent = v + " XP";
     xpFillEl.style.width = ((v % 1000) / 10) + "%";
   }, beforeXp, xp, 1100);
   if (dT) popDelta(trophyCountEl.parentElement, (dT > 0 ? "+" : "") + dT + " 🏆", dT < 0);
@@ -2658,7 +2669,7 @@ function showPromoPicker(candidates) {
   promoBox.innerHTML = "";
   for (const t of ["Q", "R", "B", "N"]) {
     const btn = document.createElement("button");
-    btn.textContent = glyphFor(t);
+    btn.textContent = GLYPH[t];   // picker always uses the clear classic symbols
     btn.title = { Q: "Queen", R: "Rook", B: "Bishop", N: "Knight" }[t];
     btn.addEventListener("click", () => {
       const m = pendingPromo.find(x => x.promo.toUpperCase() === t);
@@ -3097,7 +3108,9 @@ function renderStatus() {
   statusEl.classList.toggle("thinking", thinking && !gameOver);
   boardEl.classList.toggle("thinking", thinking && !gameOver);
   PIECE_SKINS.forEach(s => boardEl.classList.remove("skin-" + s.id));
+  boardEl.classList.remove("skin-emoji");
   boardEl.classList.add("skin-" + PIECE_SKINS[activeSkin].id);
+  if (PIECE_SKINS[activeSkin].emoji) boardEl.classList.add("skin-emoji");
   if (gameOver) {
     statusEl.innerHTML = `<span>🏁 ${gameOver.result}</span>`;
   } else if (thinking) {
