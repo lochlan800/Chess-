@@ -377,6 +377,12 @@
     background: rgba(0,0,0,0.22); border-radius: 8px; padding: 6px 10px;
   }
   .game-pts b { color: #ffe27a; font-size: 15px; }
+  .game-pts.pts-bump { animation: ptsBump 0.35s ease-out; }
+  @keyframes ptsBump {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.12); background: rgba(255,226,122,0.25); }
+    100% { transform: scale(1); }
+  }
   /* Points that float up off the board square you moved to */
   .board-pop {
     position: absolute; left: 0; right: 0; top: 16%; text-align: center;
@@ -2064,10 +2070,14 @@ function popBoardPoints(sq, text) {
 }
 function awardMovePoints(m) {
   const pts = 5 + (m.capture ? SCORE_VAL[m.capture.toUpperCase()] : 0);
-  const from = gameScore;
   gameScore += pts;
   popBoardPoints(m.to, "+" + pts);
-  animateCount(v => { const el = document.getElementById("gamePtsNum"); if (el) el.textContent = v; }, from, gameScore, 500);
+  // Update the running total immediately so it always matches the "+N" pop,
+  // then give the badge a quick flash so the change is still noticeable.
+  const el = document.getElementById("gamePtsNum");
+  if (el) el.textContent = gameScore;
+  const box = document.getElementById("gamePts");
+  if (box) { box.classList.remove("pts-bump"); void box.offsetWidth; box.classList.add("pts-bump"); }
 }
 
 // Count the score bar up to the new totals and pop a floating "+N" so the
