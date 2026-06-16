@@ -334,6 +334,9 @@
   .coach-list { margin: 0; padding-left: 18px; }
   .coach-list li { font-size: 13.5px; line-height: 1.5; color: var(--text); }
   .coach-list li.speaking { color: #b8e994; font-weight: 700; }
+  .coach-voice { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .coach-voice label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .coach-voice select { flex: 1; min-width: 0; padding: 5px 6px; font-size: 12.5px; border-radius: 8px; background: var(--bg); color: var(--text); border: 1px solid rgba(255,255,255,0.15); }
   .practice-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .practice-bar .btn { width: auto; padding: 8px 14px; }
   .practice-tag { font-size: 13px; font-weight: 700; color: #b8e994; }
@@ -801,6 +804,10 @@
         <button class="tip-btn" id="coachReplay" title="Read the questions again">🔊 Read</button>
       </div>
       <ul class="coach-list" id="coachList"></ul>
+      <div class="coach-voice">
+        <label for="coachVoiceSel">Coach voice</label>
+        <select id="coachVoiceSel"></select>
+      </div>
     </div>
     <div class="scorebar" id="scorebar">
       <div class="score-cell"><span class="score-big" id="trophyCount">0</span><span class="score-lbl"><span id="rankName">Pawn</span> 🏆</span></div>
@@ -1486,20 +1493,48 @@ const COACH_QUESTIONS = [
   "Can I win something for free?",
   "If I move here, what can they do back?",
 ];
-// Pick the most natural-sounding English voice the device offers.
+// Coach speech. Voice quality depends entirely on the device's installed
+// voices, so we auto-pick the most natural English one AND let the player
+// choose from a dropdown (their pick is remembered).
 let coachVoice = null;
+let coachVoices = [];        // the English voices offered to the picker
+function englishVoices() {
+  try { return window.speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)); } catch (e) { return []; }
+}
+// "Natural" voices are usually network-based (localService === false) or have
+// premium names; score each so the best one is the default.
+function voiceScore(v) {
+  let s = 0;
+  if (v.localService === false) s += 5;                                   // network voices = much smoother
+  if (/natural|neural|wavenet|enhanced|premium|online/i.test(v.name)) s += 6;
+  if (/google/i.test(v.name)) s += 4;
+  if (/samantha|aria|jenny|libby|serena|sonia|karen|moira|daniel/i.test(v.name)) s += 3;
+  if (/^en-?GB/i.test(v.lang)) s += 1;
+  return s;
+}
 function loadCoachVoice() {
   try {
     if (!window.speechSynthesis) return;
-    const vs = window.speechSynthesis.getVoices();
+    const vs = englishVoices();
     if (!vs.length) return;
-    const prefer = ["Google UK English Female", "Google US English", "Samantha",
-      "Microsoft Aria", "Microsoft Jenny", "Microsoft Libby", "Karen", "Moira",
-      "Serena", "Daniel", "Natural"];
-    coachVoice = vs.find(v => prefer.some(p => v.name.includes(p)))
-      || vs.find(v => /^en/i.test(v.lang) && /female|natural|google|aria|jenny|libby/i.test(v.name))
-      || vs.find(v => /^en/i.test(v.lang)) || vs[0];
+    coachVoices = vs.slice().sort((a, b) => voiceScore(b) - voiceScore(a));
+    const saved = (() => { try { return localStorage.getItem("chessCoachVoice"); } catch (e) { return null; } })();
+    coachVoice = (saved && vs.find(v => v.name === saved)) || coachVoices[0];
+    populateVoicePicker();
   } catch (e) {}
+}
+function populateVoicePicker() {
+  const sel = document.getElementById("coachVoiceSel");
+  if (!sel || !coachVoices.length) return;
+  if (sel.options.length !== coachVoices.length) {
+    sel.innerHTML = "";
+    coachVoices.forEach(v => {
+      const o = document.createElement("option");
+      o.value = v.name; o.textContent = v.name.replace(/\(.*?\)/g, "").trim() + (v.localService === false ? " ✨" : "");
+      sel.appendChild(o);
+    });
+  }
+  if (coachVoice) sel.value = coachVoice.name;
 }
 try { if (window.speechSynthesis) { loadCoachVoice(); window.speechSynthesis.onvoiceschanged = loadCoachVoice; } } catch (e) {}
 function speak(text) {
@@ -2772,7 +2807,17 @@ function showCoachChecklist() {
     list.appendChild(li);
   });
   panel.style.display = "block";
+  loadCoachVoice();        // make sure voices/picker are ready
+  populateVoicePicker();
   speakChecklist();
+}
+// Player chose a voice from the dropdown: use it, remember it, read a sample.
+function setCoachVoice(name) {
+  const v = coachVoices.find(x => x.name === name);
+  if (!v) return;
+  coachVoice = v;
+  try { localStorage.setItem("chessCoachVoice", name); } catch (e) {}
+  speak("Hi, I'm your coach. Is my king safe?");
 }
 function speakChecklist() {
   const list = document.getElementById("coachList");
@@ -3502,6 +3547,7 @@ document.getElementById("shopClose").addEventListener("click", () => { document.
 document.getElementById("startPractice").addEventListener("click", startPractice);
 document.getElementById("practiceBack").addEventListener("click", exitPractice);
 document.getElementById("coachReplay").addEventListener("click", speakChecklist);
+document.getElementById("coachVoiceSel").addEventListener("change", (e) => setCoachVoice(e.target.value));
 </script>
 </body>
 </html>
