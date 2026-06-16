@@ -324,18 +324,16 @@
   .end-sub { font-size: 14px; color: var(--muted); margin-bottom: 18px; }
   .end-box .btn, .review-box .btn { width: auto; padding: 11px 22px; }
   .end-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-  /* Practice mode: coach pre-move question + back bar */
-  .coach-overlay { background: rgba(16,20,30,0.82); backdrop-filter: blur(2px); }
-  .coach-box {
-    background: var(--panel); border-radius: 16px; padding: 20px 22px; text-align: center;
-    box-shadow: 0 14px 44px rgba(0,0,0,0.6); max-width: min(360px, 86vw);
+  /* Practice mode: compact coach checklist panel + back bar */
+  .coach-panel {
+    background: rgba(123,216,143,0.08); border: 1px solid rgba(123,216,143,0.3);
+    border-radius: 12px; padding: 10px 12px; margin-bottom: 10px;
     animation: pop 0.3s cubic-bezier(0.2, 1.4, 0.5, 1);
   }
-  .coach-emoji { font-size: 40px; line-height: 1; }
-  .coach-label { font-size: 12px; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin: 6px 0; }
-  .coach-q { font-size: 21px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; }
-  .coach-count { font-size: 34px; font-weight: 900; color: var(--accent); margin-bottom: 12px; }
-  .coach-box .btn { width: auto; padding: 10px 20px; }
+  .coach-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 800; color: #b8e994; margin-bottom: 6px; }
+  .coach-list { margin: 0; padding-left: 18px; }
+  .coach-list li { font-size: 13.5px; line-height: 1.5; color: var(--text); }
+  .coach-list li.speaking { color: #b8e994; font-weight: 700; }
   .practice-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .practice-bar .btn { width: auto; padding: 8px 14px; }
   .practice-tag { font-size: 13px; font-weight: 700; color: #b8e994; }
@@ -734,15 +732,6 @@
           <div class="review-progress" id="reviewProgress"></div>
         </div>
       </div>
-      <div class="end-overlay coach-overlay" id="coachAsk" style="display:none">
-        <div class="coach-box">
-          <div class="coach-emoji">🧑‍🏫</div>
-          <div class="coach-label">Before you move, ask yourself…</div>
-          <div class="coach-q" id="coachQ"></div>
-          <div class="coach-count" id="coachCount">10</div>
-          <button class="btn" id="coachReady">I've thought about it ▶</button>
-        </div>
-      </div>
 
     </div>
     </div>
@@ -805,6 +794,13 @@
     <div class="practice-bar" id="practiceBar" style="display:none">
       <button class="btn" id="practiceBack">⬅ Back</button>
       <span class="practice-tag">🧑‍🏫 Practice mode — no points</span>
+    </div>
+    <div class="coach-panel" id="coachPanel" style="display:none">
+      <div class="coach-panel-head">
+        <span>🧑‍🏫 Before every move, ask yourself…</span>
+        <button class="tip-btn" id="coachReplay" title="Read the questions again">🔊 Read</button>
+      </div>
+      <ul class="coach-list" id="coachList"></ul>
     </div>
     <div class="scorebar" id="scorebar">
       <div class="score-cell"><span class="score-big" id="trophyCount">0</span><span class="score-lbl"><span id="rankName">Pawn</span> 🏆</span></div>
@@ -1479,30 +1475,41 @@ const endSub = document.getElementById("endSub");
 
 let st, history, repMap, gameOver, selected, legalForSelected, humanColor, thinking, pendingPromo;
 let tutorialMode = false;   // weakest random AI + suppress points during the practice game
-// Practice mode: a real game vs your opponent, but no points, a Back button, and
-// a coach that pauses you before each move with a question to always ask.
+// Practice mode: a real game vs your opponent with no points and a Back button.
+// A coach shows the 5 key questions to always ask (shown + read out at the
+// start), while you can still see the whole board.
 let practiceMode = false;
-let coachPausing = false;   // true while the coach question is up (blocks moves)
-let coachTimer = null;      // the 10-second countdown interval
-let coachQIdx = 0;          // which checklist question to show next
 const COACH_QUESTIONS = [
   "Is my king safe?",
-  "Are any of my pieces left undefended?",
+  "Are any of my pieces undefended?",
   "What is my opponent threatening?",
-  "Can I win a piece or pawn for free?",
-  "If I make this move, what can they do back?",
-  "Does this move leave anything hanging?",
-  "Can I give a check or make a strong threat?",
-  "Are all my pieces doing something useful?",
-  "What is my opponent's last move trying to do?",
-  "Is there an even better move than my first idea?",
+  "Can I win something for free?",
+  "If I move here, what can they do back?",
 ];
+// Pick the most natural-sounding English voice the device offers.
+let coachVoice = null;
+function loadCoachVoice() {
+  try {
+    if (!window.speechSynthesis) return;
+    const vs = window.speechSynthesis.getVoices();
+    if (!vs.length) return;
+    const prefer = ["Google UK English Female", "Google US English", "Samantha",
+      "Microsoft Aria", "Microsoft Jenny", "Microsoft Libby", "Karen", "Moira",
+      "Serena", "Daniel", "Natural"];
+    coachVoice = vs.find(v => prefer.some(p => v.name.includes(p)))
+      || vs.find(v => /^en/i.test(v.lang) && /female|natural|google|aria|jenny|libby/i.test(v.name))
+      || vs.find(v => /^en/i.test(v.lang)) || vs[0];
+  } catch (e) {}
+}
+try { if (window.speechSynthesis) { loadCoachVoice(); window.speechSynthesis.onvoiceschanged = loadCoachVoice; } } catch (e) {}
 function speak(text) {
   try {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
+    if (!coachVoice) loadCoachVoice();
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.95; u.pitch = 1.05;
+    if (coachVoice) u.voice = coachVoice;
+    u.rate = 0.9; u.pitch = 1.0;   // slower + natural pitch = less robotic
     window.speechSynthesis.speak(u);
   } catch (e) {}
 }
@@ -1572,7 +1579,6 @@ function repKey(s) {
 }
 
 function resetGame() {
-  endCoachPause();      // clear any lingering practice-coach pause
   st = newState();
   history = [];
   repMap = Object.create(null);
@@ -1604,7 +1610,6 @@ function resetGame() {
   render();
   say("greet");
   maybeAiTurn();
-  maybePracticeCoach();   // pause + ask before your first move (when you move first)
 }
 
 /* ---- Post-game review: step through the game move by move with coaching ---- */
@@ -2174,7 +2179,6 @@ function playMove(m) {
   reactToMove(m, isComputer, checking);
   render();
   if (movePts) popBoardPoints(m.to, "+" + movePts);   // float the points off the square
-  maybePracticeCoach();   // if it's now your turn in practice mode, pause + ask
 }
 
 function undo() {
@@ -2745,53 +2749,56 @@ function startPractice() {
   startOverlay.style.display = "none";
   tutOverlay.style.display = "none";
   document.getElementById("startGate").style.display = "none";
-  coachQIdx = 0;
   resetGame();
+  showCoachChecklist();   // questions come up (and are read out) straight away
 }
 function exitPractice() {
-  endCoachPause();
   practiceMode = false;
   try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
   document.getElementById("practiceBar").style.display = "none";
-  document.getElementById("coachAsk").style.display = "none";
+  document.getElementById("coachPanel").style.display = "none";
   armStartGate();   // back to "pick your opponent"
 }
-// Show the coach question (and speak it), pausing the player ~10 seconds before
-// they may move. Called whenever it becomes the human's turn in practice mode.
-function showCoachAsk() {
-  if (!practiceMode || gameOver || st.turn !== humanColor) return;
-  const q = COACH_QUESTIONS[coachQIdx % COACH_QUESTIONS.length];
-  coachQIdx++;
-  document.getElementById("coachQ").textContent = q;
-  const overlay = document.getElementById("coachAsk");
-  const countEl = document.getElementById("coachCount");
-  coachPausing = true;
-  overlay.style.display = "flex";
-  speak(q);
-  let left = 10;
-  countEl.textContent = left;
-  if (coachTimer) clearInterval(coachTimer);
-  coachTimer = setInterval(() => {
-    left--;
-    countEl.textContent = left > 0 ? left : "Go!";
-    if (left <= 0) endCoachPause();
-  }, 1000);
+// Fill the compact coach panel with the 5 questions, show it, and read them out
+// once (highlighting each as it's spoken). Doesn't cover the board.
+function showCoachChecklist() {
+  const panel = document.getElementById("coachPanel");
+  const list = document.getElementById("coachList");
+  list.innerHTML = "";
+  COACH_QUESTIONS.forEach((q, i) => {
+    const li = document.createElement("li");
+    li.textContent = q;
+    li.dataset.i = i;
+    list.appendChild(li);
+  });
+  panel.style.display = "block";
+  speakChecklist();
 }
-function endCoachPause() {
-  if (coachTimer) { clearInterval(coachTimer); coachTimer = null; }
-  coachPausing = false;
-  try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
-  const overlay = document.getElementById("coachAsk");
-  if (overlay) overlay.style.display = "none";
-}
-// Trigger the coach the moment it's the human's turn (game start / after AI).
-function maybePracticeCoach() {
-  if (practiceMode && !gameOver && !coachPausing && st.turn === humanColor) showCoachAsk();
+function speakChecklist() {
+  const list = document.getElementById("coachList");
+  const items = [...list.querySelectorAll("li")];
+  items.forEach(li => li.classList.remove("speaking"));
+  try {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    if (!coachVoice) loadCoachVoice();
+    const intro = new SpeechSynthesisUtterance("Before every move, ask yourself:");
+    if (coachVoice) intro.voice = coachVoice;
+    intro.rate = 0.9; intro.pitch = 1.0;
+    window.speechSynthesis.speak(intro);
+    COACH_QUESTIONS.forEach((q, i) => {
+      const u = new SpeechSynthesisUtterance(q);
+      if (coachVoice) u.voice = coachVoice;
+      u.rate = 0.9; u.pitch = 1.0;
+      u.onstart = () => { items.forEach(li => li.classList.remove("speaking")); if (items[i]) items[i].classList.add("speaking"); };
+      if (i === COACH_QUESTIONS.length - 1) u.onend = () => items.forEach(li => li.classList.remove("speaking"));
+      window.speechSynthesis.speak(u);
+    });
+  } catch (e) {}
 }
 
 function onSquareClick(sq) {
   if (tacticsMode) { onTacticsClick(sq); return; }
-  if (coachPausing) return;   // practice mode: wait for the coach's pause to finish
   if (awaitingStart || reviewMode || gameOver || thinking || pendingPromo || st.turn !== humanColor) return;
   const p = st.board[sq];
 
@@ -3264,6 +3271,7 @@ function renderStatus() {
   boardEl.classList.add("skin-" + PIECE_SKINS[activeSkin].id);
   const pBar = document.getElementById("practiceBar");
   if (pBar) pBar.style.display = practiceMode ? "flex" : "none";
+  if (!practiceMode) { const cp = document.getElementById("coachPanel"); if (cp) cp.style.display = "none"; }
   if (gameOver) {
     statusEl.innerHTML = `<span>🏁 ${gameOver.result}</span>`;
   } else if (thinking) {
@@ -3493,7 +3501,7 @@ document.getElementById("openShop").addEventListener("click", openShop);
 document.getElementById("shopClose").addEventListener("click", () => { document.getElementById("shopOverlay").style.display = "none"; });
 document.getElementById("startPractice").addEventListener("click", startPractice);
 document.getElementById("practiceBack").addEventListener("click", exitPractice);
-document.getElementById("coachReady").addEventListener("click", endCoachPause);
+document.getElementById("coachReplay").addEventListener("click", speakChecklist);
 </script>
 </body>
 </html>
