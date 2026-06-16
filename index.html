@@ -155,6 +155,29 @@
   .skin-living .piece.b { color: #46361f; text-shadow: 0 1px 1px rgba(255,255,255,0.28); }
   .skin-lotr .piece.w { color: #ffdf7a; text-shadow: 0 0 5px #ffb300, 0 1px 2px #5a3b00; }
   .skin-lotr .piece.b { color: #2b2310; text-shadow: 0 0 6px #ffae00, 0 1px 1px rgba(255,220,120,0.4); }
+  /* A small themed badge sits on each piece (like a hat/icon) so the chess
+     shape stays but the style is obvious. Rendered as a colour emoji accent. */
+  .skin-medieval .piece::after, .skin-halloween .piece::after, .skin-christmas .piece::after,
+  .skin-viking .piece::after, .skin-easter .piece::after, .skin-victorian .piece::after,
+  .skin-fantasy .piece::after, .skin-futuristic .piece::after, .skin-living .piece::after,
+  .skin-lotr .piece::after, .skin-neon .piece::after, .skin-gold .piece::after, .skin-frost .piece::after {
+    position: absolute; top: -0.08em; left: 50%; transform: translateX(-50%);
+    font-size: 0.42em; line-height: 1; font-variant-emoji: emoji;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.55); pointer-events: none; z-index: 2;
+  }
+  .skin-medieval .piece::after   { content: "🛡️"; }
+  .skin-halloween .piece::after  { content: "🎃"; }
+  .skin-christmas .piece::after  { content: "🎄"; }
+  .skin-viking .piece::after     { content: "⚔️"; }
+  .skin-easter .piece::after     { content: "🥚"; }
+  .skin-victorian .piece::after  { content: "🎩"; }
+  .skin-fantasy .piece::after    { content: "✨"; }
+  .skin-futuristic .piece::after { content: "⚡"; }
+  .skin-living .piece::after     { content: "🌿"; }
+  .skin-lotr .piece::after       { content: "💍"; }
+  .skin-neon .piece::after       { content: "⚡"; }
+  .skin-gold .piece::after       { content: "👑"; }
+  .skin-frost .piece::after      { content: "❄️"; }
   .skin-neon .piece.w { color: #d7fbff; text-shadow: 0 0 5px #38e0ff, 0 0 12px #38e0ff; }
   .skin-neon .piece.b { color: #ffd0ff; text-shadow: 0 0 5px #ff5bf0, 0 0 12px #ff5bf0; }
   .skin-gold .piece.w { color: #ffd86b; text-shadow: 0 1px 2px #6b4d00, 0 0 6px rgba(255,200,80,0.6); }
