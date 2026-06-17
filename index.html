@@ -53,6 +53,20 @@
   }
   .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
 
+  /* Full-screen board mode: board fills the screen + a points bar on top */
+  #fullBar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    display: flex; align-items: center; gap: 14px; padding: 8px 12px;
+    background: rgba(20, 24, 34, 0.92); box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
+  #fullBar .fb-pts, #fullBar .fb-lv { font-size: 15px; font-weight: 700; color: var(--text); }
+  #fullBar b { color: #ffe27a; }
+  #fullBar #collapseBoard { width: auto; padding: 7px 14px; margin-left: auto; }
+  body.board-full { --sq: min(calc((100vw - 12px) / 8), calc((100vh - 76px) / 8)); padding: 0; }
+  body.board-full .app { gap: 0; }
+  body.board-full h1, body.board-full .subtitle, body.board-full .eval-bar, body.board-full .panel { display: none; }
+  body.board-full .app > div:first-child { margin-top: 60px; }
+
   .board-row { display: flex; gap: 8px; align-items: stretch; }
   .eval-bar {
     width: 16px; border-radius: 5px; overflow: hidden; position: relative;
@@ -652,6 +666,11 @@
 </style>
 </head>
 <body>
+<div id="fullBar" style="display:none">
+  <span class="fb-pts">🎯 <b id="fullPts">0</b> pts</span>
+  <span class="fb-lv">Lv <b id="fullLv">1</b></span>
+  <button class="btn" id="collapseBoard" title="Exit full screen">✕ Close</button>
+</div>
 <div class="full-overlay" id="startOverlay">
   <div class="start-box">
     <div class="start-emoji">♞</div>
@@ -873,6 +892,7 @@
       <button class="btn primary" id="newgame">New Game</button>
       <button class="btn" id="undo">Undo</button>
       <button class="btn" id="sound" title="Toggle move sounds" aria-pressed="true">🔊</button>
+      <button class="btn" id="expandBoard" title="Expand board to full screen">⛶ Expand</button>
     </div>
 
     <div class="captured">
@@ -2217,6 +2237,17 @@ try { const sk = PIECE_SKINS.findIndex(s => s.id === localStorage.getItem("chess
 function rankFor(t) { let r = "Pawn"; for (const [th, name] of RANKS) if (t >= th) r = name; return r; }
 function levelFor(x) { return Math.floor(x / 1000) + 1; }
 
+/* ---- Full-screen board mode (board fills the screen + a points bar) ---- */
+function updateFullBar() {
+  const p = document.getElementById("fullPts"); if (p) p.textContent = gameScore;
+  const l = document.getElementById("fullLv"); if (l) l.textContent = levelFor(xp);
+}
+function toggleBoardFull(on) {
+  document.body.classList.toggle("board-full", on);
+  document.getElementById("fullBar").style.display = on ? "flex" : "none";
+  updateFullBar();
+}
+
 function updateScoreUI() {
   trophyCountEl.textContent = trophies;
   rankNameEl.textContent = rankFor(trophies);
@@ -3279,6 +3310,7 @@ function renderStatus() {
   const pBar = document.getElementById("practiceBar");
   if (pBar) pBar.style.display = practiceMode ? "flex" : "none";
   if (!practiceMode) { const cp = document.getElementById("coachPanel"); if (cp) cp.style.display = "none"; }
+  updateFullBar();
   if (gameOver) {
     statusEl.innerHTML = `<span>🏁 ${gameOver.result}</span>`;
   } else if (thinking) {
@@ -3459,6 +3491,8 @@ document.getElementById("heatYou").addEventListener("click", () => setHeatView("
 document.getElementById("heatAi").addEventListener("click", () => setHeatView("ai"));
 document.getElementById("heatPerfect").addEventListener("click", () => setHeatView("perfect"));
 document.getElementById("undo").addEventListener("click", undo);
+document.getElementById("expandBoard").addEventListener("click", () => toggleBoardFull(true));
+document.getElementById("collapseBoard").addEventListener("click", () => toggleBoardFull(false));
 const soundBtn = document.getElementById("sound");
 soundBtn.addEventListener("click", () => {
   soundOn = !soundOn;
